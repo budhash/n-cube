@@ -1,6 +1,7 @@
 package com.cedarsoftware.ncube
 
 import groovy.transform.CompileStatic
+import org.junit.Ignore
 import org.junit.Test
 
 import static org.junit.Assert.assertTrue
@@ -32,7 +33,7 @@ class TestAllCellsInBigCube
     @Test
     void testAllCellsInBigCube()
     {
-        for (int qq=0; qq < 1; qq++)
+        for (int qq = 0; qq < 1; qq++)
         {
             long start = System.nanoTime()
             NCube<Long> ncube = new NCube("bigCube")
@@ -54,7 +55,7 @@ class TestAllCellsInBigCube
                 }
             }
 
-            def coord = [:]
+            Map coord = [:]
             for (int a = 1; a <= 11; a++)
             {
                 coord.axis0 = a - 1
@@ -103,5 +104,93 @@ class TestAllCellsInBigCube
             double diff = (stop - start) / 1000000.0
             println("time to build and read allCellsInBigCube = " + diff)
         }
+    }
+
+    @Ignore
+    void testLarge1D()
+    {
+        long start = System.nanoTime()
+        NCube<Boolean> ncube = new NCube("bigCube")
+        Axis axis = new Axis("axis", AxisType.DISCRETE, AxisValueType.LONG, false)
+        ncube.addAxis(axis)
+        int max = 6000000
+        for (int j = 0; j < max; j++)
+        {
+            ncube.addColumn("axis", j)
+        }
+        Map coord = [:]
+
+        for (int e = 0; e < max; e++)
+        {
+            coord.axis = e
+            ncube.setCell(true, coord)
+            if (e % 1000000 == 0)
+            {
+                println e
+            }
+        }
+
+        println 'num Cells = ' + ncube.numCells
+        println 'num Potential Cells = ' + ncube.numPotentialCells
+        assert ncube.numCells == ncube.numPotentialCells
+        long stop = System.nanoTime()
+        double diff = (stop - start) / 1000000.0
+        println("time to test large 1D = " + diff)
+    }
+
+    @Ignore
+    void testCubeToBlowupMemory()
+    {
+        long start = System.nanoTime()
+        NCube<Boolean> ncube = new NCube("bigCube")
+
+        int size = 10
+        int last = 1400    // 1300 = 13 million cells, 1400 = 14 million cells, ...
+
+        for (int i = 0; i < 4; i++)
+        {
+            Axis axis = new Axis("axis" + i, AxisType.DISCRETE, AxisValueType.LONG, false)
+            ncube.addAxis(axis)
+            for (int j = 0; j < size; j++)
+            {
+                ncube.addColumn("axis" + i, j)
+            }
+        }
+        Axis axis = new Axis("axis4", AxisType.DISCRETE, AxisValueType.LONG, false)
+        ncube.addAxis(axis)
+        for (int j = 0; j < last; j++)
+        {
+            ncube.addColumn("axis4", j)
+        }
+
+        Map coord = [:]
+        for (int a = 1; a <= size; a++)
+        {
+            coord.axis0 = a - 1
+            for (int b = 1; b <= size; b++)
+            {
+                coord.axis1 = b - 1
+                for (int c = 1; c <= size; c++)
+                {
+                    coord.axis2 = c - 1
+                    for (int d = 1; d <= size; d++)
+                    {
+                        coord.axis3 = d - 1
+                        for (long e = 1; e <= last; e++)
+                        {
+                            coord.axis4 = e - 1
+                            ncube.setCell(true, coord)
+                        }
+                    }
+                }
+                println '  ' + b
+            }
+            println a
+        }
+        println ncube.numCells
+        println ncube.numPotentialCells
+        long stop = System.nanoTime()
+        double diff = (stop - start) / 1000000.0
+        println("time to build and read allCellsInBigCube = " + diff)
     }
 }

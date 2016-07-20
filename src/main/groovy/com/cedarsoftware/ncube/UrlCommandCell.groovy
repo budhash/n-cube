@@ -1,10 +1,9 @@
 package com.cedarsoftware.ncube
-
 import groovy.transform.CompileStatic
+import org.apache.logging.log4j.LogManager
+import org.apache.logging.log4j.Logger
 
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.regex.Matcher
-
 /**
  * @author John DeRegnaucourt (jdereg@gmail.com)
  * @author Ken Partlow (kpartlow@gmail.com)
@@ -24,24 +23,23 @@ import java.util.regex.Matcher
  * limitations under the License.
  */
 @CompileStatic
-public abstract class UrlCommandCell implements CommandCell
+abstract class UrlCommandCell implements CommandCell
 {
+    private static final Logger LOG = LogManager.getLogger(UrlCommandCell.class)
     private String cmd
     private volatile transient String errorMsg = null
-    private String url = null
-    private final AtomicBoolean isUrlExpanded = new AtomicBoolean(false)
+    private final String url
     private int hash
-    private static final GroovyShell shell = new GroovyShell()
     public static final char EXTENSION_SEPARATOR = '.'
     private AtomicBoolean hasBeenCached = new AtomicBoolean(false)
-    private Object cache
+    protected Object cache
     // would prefer this was a final
     private boolean cacheable
 
     //  Private constructor only for serialization.
-    protected UrlCommandCell() { }
+    protected UrlCommandCell() { url = null }
 
-    public UrlCommandCell(String cmd, String url, boolean cacheable)
+    UrlCommandCell(String cmd, String url, boolean cacheable)
     {
         if (cmd == null && url == null)
         {
@@ -59,26 +57,26 @@ public abstract class UrlCommandCell implements CommandCell
         this.hash = cmd == null ? url.hashCode() : cmd.hashCode()
     }
 
-    public String getUrl()
+    String getUrl()
     {
         return url
     }
 
-    public boolean isCacheable()
+    boolean isCacheable()
     {
         return cacheable
     }
 
-    public void clearClassLoaderCache()
+    void clearClassLoaderCache()
     {
-        if (!hasBeenCached.get())
+        if (cache == null)
         {
             return
         }
 
-        synchronized (this)
+        synchronized (GroovyBase.class)
         {
-            if (!hasBeenCached.get())
+            if (cache == null)
             {
                 return
             }
@@ -88,103 +86,52 @@ public abstract class UrlCommandCell implements CommandCell
             {
                 ((GroovyClassLoader)cache).clearCache()
             }
-
-            hasBeenCached.set(false)
-        }
-
-    }
-
-    /**
-     * Expand URL in case it has any n-cube references in it.
-     * Rare use of GroovyShell in N-Cube.  Using it to replace any @cube[:] references in URL.
-     */
-    public void expandUrl(Map<String, Object> ctx)
-    {
-        if (isUrlExpanded.get())
-        {
-            return
-        }
-
-        synchronized (this)
-        {
-            if (isUrlExpanded.get())
-            {
-                return
-            }
-            NCube ncube = getNCube(ctx)
-            Matcher m = Regexes.groovyRelRefCubeCellPatternA.matcher(url)
-            StringBuilder expandedUrl = new StringBuilder()
-            int last = 0
-            Map input = getInput(ctx)
-
-            while (m.find())
-            {
-                expandedUrl.append(url.substring(last, m.start()))
-                String cubeName = m.group(2)
-                NCube refCube = NCubeManager.getCube(ncube.applicationID, cubeName)
-                if (refCube == null)
-                {
-                    throw new IllegalStateException("Reference to not-loaded cube: " + cubeName + ", from cube: " + ncube.name + ", url: " + url)
-                }
-
-                Map coord = (Map) shell.evaluate(m.group(3))
-                input.putAll(coord)
-                Object val = refCube.getCell(input)
-                val = (val == null) ? '' : val.toString()
-                expandedUrl.append(val)
-                last = m.end()
-            }
-
-            expandedUrl.append(url.substring(last))
-            url = expandedUrl.toString()
-            isUrlExpanded.set(true)
+            cache = null
         }
     }
 
     protected URL getActualUrl(Map<String, Object> ctx)
     {
-        URL actualUrl
-        NCube ncube = getNCube(ctx)
-        String localUrl = url.toLowerCase()
-
-        if (localUrl.startsWith('http:') || localUrl.startsWith('https:') || localUrl.startsWith('file:'))
-        {   // Absolute URL
-            actualUrl = new URL(url)
+        for (int i=0; i < 2; i++)
+        {   // Try URL resolution twice (HTTP HEAD called for connecting relative URLs to sys.classpath)
+            try
+            {
+                return NCubeManager.getActualUrl(getNCube(ctx).getApplicationID(), url, getInput(ctx))
+            }
+            catch(Exception e)
+            {
+                NCube cube = getNCube(ctx)
+                if (i == 1)
+                {   // Note: Error is marked, it will not be retried in the future
+                    setErrorMessage("Invalid URL in cell (malformed or cannot resolve given classpath): " + getUrl() + ", cube: " + cube.getName() + ", app: " + cube.applicationID)
+                    LOG.warn(getClass().getSimpleName() + ': failed 2nd attempt [will NOT retry in future] getActualUrl() - unable to resolve against sys.classpath, url: ' + getUrl() + ", cube: " + cube.getName() + ", app: " + cube.applicationID)
+                    throw new IllegalStateException(getErrorMessage(), e)
+                }
+                else
+                {
+                    LOG.warn(getClass().getSimpleName() + ': retrying getActualUrl() - unable to resolve against sys.classpath, url: ' + getUrl() + ", cube: " + cube.getName() + ", app: " + cube.applicationID)
+                    Thread.sleep(100)
+                }
+            }
         }
-        else
-        {   // Relative URL
-            URLClassLoader loader = NCubeManager.getUrlClassLoader(ncube.applicationID, getInput(ctx))
-
-            // Make URL absolute (uses URL roots added to NCubeManager)
-            actualUrl = loader.getResource(url)
-        }
-
-        if (actualUrl == null)
-        {
-            String err = "Unable to resolve URL, make sure appropriate resource URLs are added to the sys.classpath cube, URL: " +
-                    url + ", cube: " + ncube.name + ", app: " + ncube.applicationID
-            setErrorMessage(err)
-            throw new IllegalStateException(err)
-        }
-        return actualUrl
     }
 
-    public static NCube getNCube(Map<String, Object> ctx)
+    static NCube getNCube(Map<String, Object> ctx)
     {
         return (NCube) ctx.ncube
     }
 
-    public static Map getInput(Map<String, Object> ctx)
+    static Map getInput(Map<String, Object> ctx)
     {
         return (Map) ctx.input
     }
 
-    public static Map getOutput(Map<String, Object> ctx)
+    static Map getOutput(Map<String, Object> ctx)
     {
         return (Map) ctx.output
     }
 
-    public boolean equals(Object other)
+    boolean equals(Object other)
     {
         if (!(other instanceof UrlCommandCell))
         {
@@ -201,22 +148,22 @@ public abstract class UrlCommandCell implements CommandCell
         return url.equals(that.getUrl())
     }
 
-    public int hashCode()
+    int hashCode()
     {
         return this.hash
     }
 
-    public String getCmd()
+    String getCmd()
     {
         return cmd
     }
 
-    public String toString()
+    String toString()
     {
         return url == null ? cmd : url
     }
 
-    public void failOnErrors()
+    void failOnErrors()
     {
         if (errorMsg != null)
         {
@@ -224,17 +171,17 @@ public abstract class UrlCommandCell implements CommandCell
         }
     }
 
-    public void setErrorMessage(String msg)
+    void setErrorMessage(String msg)
     {
         errorMsg = msg
     }
 
-    public String getErrorMessage()
+    String getErrorMessage()
     {
         return errorMsg
     }
 
-    public int compareTo(CommandCell cmdCell)
+    int compareTo(CommandCell cmdCell)
     {
         String cmd1 = cmd == null ? '' : cmd
         String cmd2 = cmdCell.getCmd() == null ? '' : cmdCell.getCmd()
@@ -251,15 +198,15 @@ public abstract class UrlCommandCell implements CommandCell
         return comp
     }
 
-    public void getCubeNamesFromCommandText(Set<String> cubeNames)
+    void getCubeNamesFromCommandText(Set<String> cubeNames)
     {
     }
 
-    public void getScopeKeys(Set<String> scopeKeys)
+    void getScopeKeys(Set<String> scopeKeys)
     {
     }
 
-    public Object execute(Map<String, Object> ctx)
+    Object execute(Map<String, Object> ctx)
     {
         failOnErrors()
 
@@ -273,17 +220,9 @@ public abstract class UrlCommandCell implements CommandCell
             return cache
         }
 
-        synchronized (this)
-        {
-            if (hasBeenCached.get())
-            {
-                return cache
-            }
-
-            cache = fetchResult(ctx)
-            hasBeenCached.set(true)
-            return cache
-        }
+        cache = fetchResult(ctx)
+        hasBeenCached.set(true)
+        return cache
     }
 
     protected abstract Object fetchResult(Map<String, Object> ctx)

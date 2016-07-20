@@ -35,7 +35,7 @@ import java.util.concurrent.ConcurrentHashMap
 abstract class ContentCmdCell extends UrlCommandCell
 {
     private static Map<String, String> extToMimeType = new ConcurrentHashMap<>()
-    private static final Logger LOG = LogManager.getLogger(CdnRouter.class)
+    private static final Logger LOG = LogManager.getLogger(ContentCmdCell.class)
 
     static
     {
@@ -68,7 +68,6 @@ abstract class ContentCmdCell extends UrlCommandCell
         }
         else
         {
-            expandUrl(ctx)
             data = fetchContentFromUrl(ctx)
         }
 
@@ -95,17 +94,38 @@ abstract class ContentCmdCell extends UrlCommandCell
 
     protected Object simpleFetch(Map ctx)
     {
-        try
+        NCube cube = getNCube(ctx)
+        URL u = getActualUrl(ctx)
+
+        // Try to load twice.
+        for (int i=0; i < 2; i++)
         {
-            URL u = getActualUrl(ctx)
-            return UrlUtilities.getContentFromUrlAsString(u, true)
+            try
+            {
+                return grab(u)
+            }
+            catch (Exception e)
+            {
+                final String className = getClass().getSimpleName()
+                String errorMsg = 'url: ' + getUrl() + ', n-cube: ' + cube.name + ', app: ' + cube.applicationID
+                if (i == 1)
+                {   // Note: Error is not marked - it will be retried in the future
+                    String msg = 'Unable to load content from ' + errorMsg
+                    LOG.warn(className + ': failed 2nd attempt [will retry on future attempts] unable to fetch contents, ' + errorMsg)
+                    throw new IllegalStateException(msg, e)
+                }
+                else
+                {
+                    LOG.warn(className + ': retrying fetch, ' + errorMsg)
+                    Thread.sleep(150)
+                }
+            }
         }
-        catch (Exception e)
-        {
-            NCube cube = getNCube(ctx)
-            setErrorMessage("Failed to load cell contents from URL: " + url + ", cube: " + cube.name + ", version: " + cube.version)
-            throw new IllegalStateException(getErrorMessage(), e)
-        }
+    }
+
+    protected Object grab(URL u)
+    {
+        return UrlUtilities.getContentFromUrlAsString(u, true)
     }
 
     protected Object proxyFetch(Map ctx)

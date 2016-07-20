@@ -19,6 +19,18 @@ import java.util.regex.Pattern
  * string, double, long, boolean , bigdec, int, bigint, date, binary, exp, method,
  * template, string, byte, short, float, point2d, point3d, latlon, range, rangeset
  *
+ * Use the constructor CellInfo(cell) to initialize the CellInfo from a standard cell
+ * from an n-cube.  The cell would have been fetched from a getCellNoExecute() API.
+ * Any cell fetched this way, placed into a CellInfo(value), will allow the cell to
+ * be iterrogated for it's value (in String format), dataType name (in String format),
+ * isUrl (true if value is a URL), and isCached (boolean if the cell was marked to be
+ * cached).
+ *
+ * Call cellInfo.recreate() to recreate the exact value that was passed to the constructor
+ * as mentioned in the above paragraph.  For example, CellInfo info = new CellInfo(cell)
+ * where cell came from ncube.getCellNoExecute().  Next, to get the cell value back,
+ * call info.recreate().  This will return the value that was stored in the n-cube cell.
+ *
  * @author John DeRegnaucourt (jdereg@gmail.com)
  *         <br>
  *         Copyright (c) Cedar Software LLC
@@ -182,7 +194,7 @@ class CellInfo
             isUrl = StringUtilities.hasContent(method.getUrl())
             value = isUrl ? method.getUrl() : method.getCmd()
             dataType = 'method'
-            isCached = true
+            isCached = method.isCacheable()
         }
         else if (cell instanceof StringUrlCmd)
         {
@@ -232,15 +244,41 @@ class CellInfo
                 if (val instanceof Range)
                 {
                     Range range = (Range) val
+                    boolean needsQuoted = range.low instanceof String
                     builder.append('[')
+                    if (needsQuoted)
+                    {
+                        builder.append('"')
+                    }
                     builder.append(formatForEditing(range.low))
+                    if (needsQuoted)
+                    {
+                        builder.append('"')
+                    }
                     builder.append(", ")
+                    if (needsQuoted)
+                    {
+                        builder.append('"')
+                    }
                     builder.append(formatForEditing(range.high))
+                    if (needsQuoted)
+                    {
+                        builder.append('"')
+                    }
                     builder.append("]")
                 }
                 else
                 {
+                    boolean needsQuoted = val instanceof String
+                    if (needsQuoted)
+                    {
+                        builder.append('"')
+                    }
                     builder.append(formatForEditing(val))
+                    if (needsQuoted)
+                    {
+                        builder.append('"')
+                    }
                 }
             }
             value = builder.toString()
@@ -271,6 +309,35 @@ class CellInfo
             throw new IllegalArgumentException(MessageFormat.format('Unsupported type {0} found in {1}', cell.getClass().getName(), section))
         }
         return type
+    }
+
+    Object asType(Class c)
+    {
+        if (Map.class.isAssignableFrom(c))
+        {
+            Map ret = [type: dataType]
+            if (isUrl)
+            {
+                ret.url = value
+            }
+            else
+            {
+                ret.value = value
+            }
+            if (isCached)
+            {   // Only add 'cache' to Map if cache=true
+                ret.cache = true
+            }
+            return ret
+        }
+        else if (CellInfo.isAssignableFrom(c))
+        {
+            return this
+        }
+        else
+        {
+            throw new IllegalArgumentException('Unknown type to convert CellInfo to: ' + c.getName())
+        }
     }
 
     /**

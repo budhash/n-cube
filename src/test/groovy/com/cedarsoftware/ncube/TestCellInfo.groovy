@@ -1,9 +1,12 @@
 package com.cedarsoftware.ncube
-
 import com.cedarsoftware.ncube.proximity.LatLon
 import com.cedarsoftware.ncube.proximity.Point2D
 import com.cedarsoftware.ncube.proximity.Point3D
+import com.cedarsoftware.util.CaseInsensitiveSet
 import com.cedarsoftware.util.io.JsonObject
+import groovy.transform.CompileStatic
+import groovy.transform.TypeChecked
+import groovy.transform.TypeCheckingMode
 import org.junit.Test
 
 import static org.junit.Assert.assertArrayEquals
@@ -12,7 +15,6 @@ import static org.junit.Assert.assertFalse
 import static org.junit.Assert.assertNull
 import static org.junit.Assert.assertTrue
 import static org.junit.Assert.fail
-
 /**
  * @author John DeRegnaucourt (jdereg@gmail.com)
  *         <br/>
@@ -30,6 +32,7 @@ import static org.junit.Assert.fail
  *         See the License for the specific language governing permissions and
  *         limitations under the License.
  */
+@CompileStatic
 class TestCellInfo
 {
     @Test
@@ -98,8 +101,8 @@ class TestCellInfo
         assertNull new CellInfo(null).recreate()
 
         performRecreateAssertion new StringUrlCmd('http://www.google.com', true)
-        performRecreateAssertion new Double(4.56)
-        performRecreateAssertion new Float(4.56)
+        performRecreateAssertion new Double(4.56d)
+        performRecreateAssertion new Float(4.56f)
         performRecreateAssertion new Short((short) 4)
         performRecreateAssertion new Long(4)
         performRecreateAssertion new Integer(4)
@@ -109,7 +112,14 @@ class TestCellInfo
         performRecreateAssertion Boolean.TRUE
         performRecreateAssertion new GroovyExpression('0', null, false)
         performRecreateAssertion new GroovyMethod('0', null, false)
-        performRecreateAssertion new GroovyTemplate(null, 'http://www.google.com', false)
+        GroovyTemplate template = new GroovyTemplate('<html>${return input.age > 17}<div><%=input.state%></div></html>', null, false)
+        Set<String> scopeKeys = new CaseInsensitiveSet<>()
+        template.getScopeKeys(scopeKeys)
+        performRecreateAssertion(template)
+        assert scopeKeys.contains('age')
+        assert scopeKeys.contains('AGE')
+        assert scopeKeys.contains('age')
+        assert scopeKeys.contains('STATE')
         performRecreateAssertion new BinaryUrlCmd('http://www.google.com', false)
         performArrayRecreateAssertion([0, 4, 5, 6] as byte[])
         performRecreateAssertion 'foo'
@@ -269,6 +279,10 @@ class TestCellInfo
     {
         GroovyMethod method = (GroovyMethod) CellInfo.parseJsonValue("def [5]", null, "method", true)
         assertEquals(new GroovyMethod("def [5]", null, false), method)
+        CellInfo cellInfo = new CellInfo(method)
+        Map map = cellInfo as Map
+        assert map.type == "method"
+        assert map.value instanceof String
     }
 
     @Test
@@ -303,6 +317,30 @@ class TestCellInfo
         assertFalse info1.equals(13)
     }
 
+    @Test
+    void testRangeWithStrings()
+    {
+        Range range = new Range('alpha', 'zooloo')
+        CellInfo cellInfo = new CellInfo(range)
+        assert "range" == cellInfo.getType(range)
+        Map map = cellInfo as Map
+        assert map.type == "range"
+        assert map.value instanceof String
+    }
+
+    @Test
+    void testRangeSetWithStrings()
+    {
+        RangeSet set = new RangeSet(new Range('alpha', 'zooloo'))
+        set.add('kilo')
+        CellInfo cellInfo = new CellInfo(set)
+        assert "rangeset" == cellInfo.getType(set)
+        Map map = cellInfo as Map
+        assert map.type == "rangeset"
+        assert map.value instanceof String
+    }
+
+    @TypeChecked(TypeCheckingMode.SKIP)
     public void performRecreateAssertion(Object o)
     {
         if (o instanceof Float || o instanceof Double)

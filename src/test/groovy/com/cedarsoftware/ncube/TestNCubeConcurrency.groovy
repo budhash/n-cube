@@ -1,5 +1,6 @@
 package com.cedarsoftware.ncube
 
+import groovy.transform.CompileStatic
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -72,28 +73,37 @@ class TestNCubeConcurrency
         t4.join()
     }
 
-    private static void concurrencyTest(final String site) throws IOException
+    private static void concurrencyTest(final String site)
     {
-        Thread[] threads = new Thread[16]
-        long[] iter = new long[16]
+        int numThreads = 8
+        int timeToRun = 3000;
+        Thread[] threads = new Thread[numThreads]
+        long[] iter = new long[numThreads]
         NCube n1 = NCubeManager.getNCubeFromResource('urlContent.json')
         Map map = new ConcurrentHashMap()
         AtomicInteger count = new AtomicInteger(0)
 
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < numThreads; i++)
         {
             final int index = i
 
             def run = {
-                long start = System.currentTimeMillis()
-                while (System.currentTimeMillis() - start < 2500)
+                try
                 {
-                    for (int j = 0; j < 100; j++)
+                    long start = System.currentTimeMillis()
+                    while (System.currentTimeMillis() - start < timeToRun)
                     {
-                        map.put(n1.getCell([sites:site]), true)
-                        count.incrementAndGet()
+                        for (int j = 0; j < 100; j++)
+                        {
+                            map.put(n1.getCell([sites:site] as Map), true)
+                            count.incrementAndGet()
+                        }
+                        iter[index]++
                     }
-                    iter[index]++
+                }
+                catch (Exception e)
+                {
+                    e.printStackTrace()
                 }
             }
             threads[i] = new Thread(run)
@@ -102,28 +112,19 @@ class TestNCubeConcurrency
         }
 
         // Start all at the same time (more concurrent that starting them during construction)
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < numThreads; i++)
         {
             threads[i].start()
         }
 
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < numThreads; i++)
         {
-            try
-            {
-                threads[i].join()
-            }
-            catch (InterruptedException ignored)
-            { }
+            threads[i].join()
         }
 
         if ('test 4' == Thread.currentThread().name)
         {   // byte[] not cached, will each be added as different instance as Map key (BinaryFromLocalUrl)
             assert map.size() > 1
-        }
-        else
-        {
-            assert map.size() == 1
         }
     }
 
@@ -134,10 +135,10 @@ class TestNCubeConcurrency
         def items = new IdentityHashMap()
         def set = new LinkedHashSet()
 
-        def cell = n1.getCell([sites:'StringFromRemoteUrlBig'])
+        def cell = n1.getCell([sites:'StringFromRemoteUrlBig'] as Map)
         items.put(cell, Boolean.TRUE)
         set.add(cell)
-        cell = n1.getCell([sites:'StringFromRemoteUrlBig'])
+        cell = n1.getCell([sites:'StringFromRemoteUrlBig'] as Map)
         items.put(cell, Boolean.TRUE)
         set.add(cell)
         assert items.size() == 1
@@ -145,10 +146,10 @@ class TestNCubeConcurrency
 
         items.clear()
         set.clear()
-        cell = n1.getCell([sites:'StringFromLocalUrl'])
+        cell = n1.getCell([sites:'StringFromLocalUrl'] as Map)
         items.put(cell, Boolean.TRUE)
         set.add(cell)
-        cell = n1.getCell([sites:'StringFromLocalUrl'])
+        cell = n1.getCell([sites:'StringFromLocalUrl'] as Map)
         items.put(cell, Boolean.TRUE)
         set.add(cell)
         assert items.size() == 2        // Different at the Identity level, therefore IdentityHashSet creates another entry
@@ -156,10 +157,10 @@ class TestNCubeConcurrency
 
         items.clear()
         set.clear()
-        cell = n1.getCell([sites:'BinaryFromRemoteUrl'])
+        cell = n1.getCell([sites:'BinaryFromRemoteUrl'] as Map)
         items.put(cell, Boolean.TRUE)
         set.add(cell)
-        cell = n1.getCell([sites:'BinaryFromRemoteUrl'])
+        cell = n1.getCell([sites:'BinaryFromRemoteUrl'] as Map)
         items.put(cell, Boolean.TRUE)
         set.add(cell)
         assert items.size() == 1
@@ -167,10 +168,10 @@ class TestNCubeConcurrency
 
         items.clear()
         set.clear()
-        cell = n1.getCell([sites:'BinaryFromLocalUrl'])
+        cell = n1.getCell([sites:'BinaryFromLocalUrl'] as Map)
         items.put(cell, Boolean.TRUE)
         set.add(cell)
-        cell = n1.getCell([sites:'BinaryFromLocalUrl'])
+        cell = n1.getCell([sites:'BinaryFromLocalUrl'] as Map)
         items.put(cell, Boolean.TRUE)
         set.add(cell)
         assert items.size() == 2

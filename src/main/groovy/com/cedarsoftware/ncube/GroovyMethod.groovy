@@ -1,9 +1,7 @@
 package com.cedarsoftware.ncube
-
 import groovy.transform.CompileStatic
-
-import java.lang.reflect.Method
-
+import ncube.grv.exp.NCubeGroovyExpression
+import ncube.grv.method.NCubeGroovyController
 /**
  * This class is used to hold Groovy Programs.  The code must start
  * with method declarations.  The outer class wrapper is built for
@@ -54,38 +52,25 @@ import java.lang.reflect.Method
  *         limitations under the License.
  */
 @CompileStatic
-public class GroovyMethod extends GroovyBase
+class GroovyMethod extends GroovyBase
 {
     //  Private constructor only for serialization.
+
     private GroovyMethod() {}
 
-    public GroovyMethod(String cmd, String url, boolean cacheable)
+    GroovyMethod(String cmd, String url, boolean cacheable)
     {
         super(cmd, url, cacheable)
     }
 
-    public String buildGroovy(Map<String, Object> ctx, String theirGroovy)
+    protected String buildGroovy(Map<String, Object> ctx, String theirGroovy)
     {
         return theirGroovy
     }
 
-    protected String getMethodToExecute(Map<String, Object> ctx)
+    protected Object invokeRunMethod(NCubeGroovyExpression instance, Map<String, Object> ctx) throws Exception
     {
-        Map input = getInput(ctx)
-        if (!input.containsKey('method'))
-        {
-            throw new IllegalArgumentException("There must be a 'method' axis (String, DISCRETE) in order to define cells of type 'method'.")
-        }
-        return (String)input.method
-    }
-
-    protected Method getRunMethod() throws NoSuchMethodException
-    {
-        return getRunnableCode().getMethod('run', String.class)
-    }
-
-    protected Object invokeRunMethod(Method runMethod, Object instance, Map<String, Object> ctx) throws Exception
-    {
-        return runMethod.invoke(instance, cmdHash)
+        NCubeGroovyController controller = (NCubeGroovyController) instance
+        return controller.run(cmdHash)
     }
 }

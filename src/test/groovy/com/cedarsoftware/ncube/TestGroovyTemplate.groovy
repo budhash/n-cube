@@ -1,5 +1,8 @@
 package com.cedarsoftware.ncube
 
+import groovy.transform.CompileStatic
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
 
 import java.lang.reflect.Constructor
@@ -25,8 +28,21 @@ import static org.junit.Assert.assertNotNull
  *         See the License for the specific language governing permissions and
  *         limitations under the License.
  */
+@CompileStatic
 class TestGroovyTemplate
 {
+    @Before
+    public void setUp()
+    {
+        TestingDatabaseHelper.setupDatabase()
+    }
+
+    @After
+    public void tearDown()
+    {
+        TestingDatabaseHelper.tearDownDatabase()
+    }
+
     @Test
     void testDefaultConstructorIsPrivateForSerialization()
     {
@@ -37,4 +53,28 @@ class TestGroovyTemplate
         assertNotNull con.newInstance()
     }
 
+    @Test
+    void testTemplateThatUsesClasspath()
+    {
+        NCubeManager.getNCubeFromResource(ApplicationID.testAppId, 'sys.classpath.cedar.json')
+        NCube template = NCubeManager.getNCubeFromResource('templateUsesClassPath.json')
+        NCubeManager.addCube(ApplicationID.testAppId, template)
+        String text = template.getCell([loc:'web', testType:'templateTest'] as Map)
+        assert text.contains('from the web')
+        assert text.contains('Hello, world."')
+
+        text = template.getCell([loc:'file system', testType:'templateTest'] as Map)
+        assert text.contains('from the file system')
+        assert text.contains('Hello, world."')
+    }
+
+    @Test
+    void testNCubeGroovyExpressionThatUsesClasspath()
+    {
+        NCubeManager.getNCubeFromResource(ApplicationID.testAppId, 'sys.classpath.cedar.json')
+        NCube template = NCubeManager.getNCubeFromResource('templateUsesClassPath.json')
+        NCubeManager.addCube(ApplicationID.testAppId, template)
+        String text = template.getCell([testType:'expressionTest'] as Map)
+        assert text.contains('Hello, world."')
+    }
 }

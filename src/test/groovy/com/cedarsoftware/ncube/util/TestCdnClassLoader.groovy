@@ -1,11 +1,10 @@
 package com.cedarsoftware.ncube.util
 
-import org.junit.Ignore
+import groovy.transform.CompileStatic
 import org.junit.Test
 
 import static org.junit.Assert.assertNotNull
 import static org.junit.Assert.assertNull
-
 /**
  * @author John DeRegnaucourt (jdereg@gmail.com)
  *         <br/>
@@ -23,6 +22,7 @@ import static org.junit.Assert.assertNull
  *         See the License for the specific language governing permissions and
  *         limitations under the License.
  */
+@CompileStatic
 class TestCdnClassLoader
 {
     @Test
@@ -39,7 +39,6 @@ class TestCdnClassLoader
         assert testLoader2.isLocalOnlyResource("META-INF/org.codehaus.groovy.transform.ASTTransformation")
         assert testLoader2.isLocalOnlyResource("ncube/grv/exp/NCubeGroovyExpression.groovy")
         assert testLoader2.isLocalOnlyResource("ncube/grv/method/NCubeGroovyController.groovy")
-        assert !testLoader2.isLocalOnlyResource("ncube/grv/closure/NCubeGroovyController.groovy")
         assert !testLoader2.isLocalOnlyResource("FooBeanInfo.groovy")
         assert !testLoader2.isLocalOnlyResource("FooCustomizer.groovy")
     }

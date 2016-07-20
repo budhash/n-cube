@@ -1,13 +1,11 @@
 package com.cedarsoftware.ncube
-
 import com.cedarsoftware.util.StringUtilities
 import groovy.transform.CompileStatic
+import ncube.grv.exp.NCubeGroovyExpression
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 
-import java.lang.reflect.Method
 import java.util.regex.Matcher
-
 /**
  * This class is used to hold Groovy Expressions.  This means that
  * the code can start without any class or method signatures.  For
@@ -41,10 +39,10 @@ import java.util.regex.Matcher
  * the coordinate that called into this cell.
  *
  * @author John DeRegnaucourt
- * Copyright (c) 2012-2015, John DeRegnaucourt.  All rights reserved.
+ * Copyright (c) 2012-2016, John DeRegnaucourt.  All rights reserved.
  */
 @CompileStatic
-public class GroovyExpression extends GroovyBase
+class GroovyExpression extends GroovyBase
 {
     public static final String EXP_IMPORTS = "exp.imports"
     public static final String EXP_CLASS = "exp.class"
@@ -53,12 +51,12 @@ public class GroovyExpression extends GroovyBase
 
     //  Private constructor only for serialization.
     private GroovyExpression() { }
-    public GroovyExpression(String cmd, String url, boolean cache)
+    GroovyExpression(String cmd, String url, boolean cache)
     {
         super(cmd, url, cache)
     }
 
-    public String buildGroovy(Map<String, Object> ctx, String theirGroovy)
+    protected String buildGroovy(Map<String, Object> ctx, String theirGroovy)
     {
         Matcher m = Regexes.hasClassDefPattern.matcher(theirGroovy)
         if (m.find())
@@ -68,7 +66,7 @@ public class GroovyExpression extends GroovyBase
 
         StringBuilder groovyCodeWithoutImportStatements = new StringBuilder()
         Set<String> imports = getImports(theirGroovy, groovyCodeWithoutImportStatements)
-        StringBuilder groovy = new StringBuilder("""
+        StringBuilder groovy = new StringBuilder("""\
 package ncube.grv.exp
 import com.cedarsoftware.ncube.*
 import com.cedarsoftware.ncube.exception.*
@@ -77,6 +75,9 @@ import com.cedarsoftware.ncube.proximity.*
 import com.cedarsoftware.ncube.util.*
 import com.cedarsoftware.util.*
 import com.cedarsoftware.util.io.*
+import com.google.common.base.*
+import com.google.common.collect.*
+import com.google.common.net.*
 """)
 
         // Add in import statements extracted from the expression cell
@@ -145,7 +146,7 @@ import com.cedarsoftware.util.io.*
         }
     }
 
-    private static void addPrototypeExpImports(Map<String, Object> ctx, StringBuilder groovy, NCube prototype)
+    protected static void addPrototypeExpImports(Map<String, Object> ctx, StringBuilder groovy, NCube prototype)
     {
         try
         {
@@ -173,7 +174,7 @@ import com.cedarsoftware.util.io.*
     {
         try
         {
-            Map<String, Object> input = getInput(ctx)
+            Map input = getInput(ctx)
             input[SYS_PROPERTY] = EXP_CLASS
             Object className = prototype.getCell(input)
             if (className instanceof String && StringUtilities.hasContent((String)className))
@@ -188,26 +189,16 @@ import com.cedarsoftware.util.io.*
         return null
     }
 
-    protected String getMethodToExecute(Map<String, Object> ctx)
-    {
-        return "run"
-    }
-
-    protected Method getRunMethod() throws NoSuchMethodException
-    {
-        return getRunnableCode().getMethod("run")
-    }
-
-    protected Object invokeRunMethod(Method runMethod, Object instance, Map<String, Object> ctx) throws Throwable
+    protected Object invokeRunMethod(NCubeGroovyExpression instance, Map<String, Object> ctx) throws Throwable
     {
         // If 'around' Advice has been added to n-cube, invoke it before calling Groovy expression's run() method
         NCube ncube = getNCube(ctx)
         Map input = getInput(ctx)
         Map output = getOutput(ctx)
-        List<Advice> advices = ncube.getAdvices("run")
+        List<Advice> advices = ncube.getAdvices('run')
         for (Advice advice : advices)
         {
-            if (!advice.before(runMethod, ncube, input, output))
+            if (!advice.before(null, ncube, input, output))
             {
                 return null
             }
@@ -218,7 +209,7 @@ import com.cedarsoftware.util.io.*
 
         try
         {
-            ret = runMethod.invoke(instance)
+            ret = instance.run()
         }
         catch (ThreadDeath e)
         {
@@ -236,7 +227,7 @@ import com.cedarsoftware.util.io.*
             Advice advice = advices.get(i)
             try
             {
-                advice.after(runMethod, ncube, input, output, ret, t)  // pass exception (t) to advice (or null)
+                advice.after(null, ncube, input, output, ret, t)  // pass exception (t) to advice (or null)
             }
             catch (ThreadDeath e)
             {
@@ -244,7 +235,7 @@ import com.cedarsoftware.util.io.*
             }
             catch (Throwable e)
             {
-                LOG.error("An exception occurred calling 'after' advice: " + advice.getName() + " on method: " + runMethod.getName(), e)
+                LOG.error("An exception occurred calling 'after' advice: " + advice.getName(), e)
             }
         }
         if (t == null)

@@ -8,13 +8,10 @@ import ncube.grv.exp.NCubeGroovyExpression
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 
-import java.lang.reflect.Constructor
 import java.lang.reflect.InvocationTargetException
-import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
 import java.util.regex.Matcher
-
 /**
  * Base class for Groovy CommandCells.
  *
@@ -35,29 +32,33 @@ import java.util.regex.Matcher
  *         limitations under the License.
  */
 @CompileStatic
-public abstract class GroovyBase extends UrlCommandCell
+abstract class GroovyBase extends UrlCommandCell
 {
     private static final Logger LOG = LogManager.getLogger(GroovyBase.class)
     protected transient String cmdHash
     private volatile transient Class runnableCode = null
     private static final ConcurrentMap<ApplicationID, ConcurrentMap<String, Class>>  compiledClasses = new ConcurrentHashMap<>()
-    private static final ConcurrentMap<ApplicationID, ConcurrentMap<String, Constructor>> constructors = new ConcurrentHashMap<>()
-    private static final ConcurrentMap<ApplicationID, ConcurrentMap<String, Method>> runMethods = new ConcurrentHashMap<>()
 
     //  Private constructor only for serialization.
     protected GroovyBase() {}
 
-    public GroovyBase(String cmd, String url, boolean cache)
+    GroovyBase(String cmd, String url, boolean cache)
     {
         super(cmd, url, cache)
     }
 
-    public Class getRunnableCode()
+    /**
+     * @return Class the compiled Class the code within this cell was compiled to (it could have been found
+     * and re-used if the code is the same as another cell).  If the cell is marked cache=true, then this
+     * method will return null. This is because the cell retains the cached value of the executed code and
+     * therefore the class reference is no longer needed.
+     */
+    protected Class getRunnableCode()
     {
         return runnableCode
     }
 
-    public void setRunnableCode(Class runnableCode)
+    protected void setRunnableCode(Class runnableCode)
     {
         this.runnableCode = runnableCode
     }
@@ -70,36 +71,13 @@ public abstract class GroovyBase extends UrlCommandCell
         {
             data = getCmd()
         }
-        else
-        {
-            expandUrl(ctx)
-        }
 
         prepare(data, ctx)
         Object result = executeInternal(ctx)
         if (isCacheable())
-        {
-            // Remove the compiled class from Groovy's internal cache after executing it.
-            // This is because the cell is marked as cacheable, so there is no need to
-            // hold a reference to the compiled class.  Also remove our reference
-            // (runnableCode = null). Internally, the class, constructor, and run() method
-            // are not cached when the cell is marked cache:true.
-            ClassLoader cl = getRunnableCode().getClassLoader().getParent()
-            if (cl instanceof GroovyClassLoader)
-            {
-                GroovyClassLoader gcl = (GroovyClassLoader) cl
-                GroovySystem.getMetaClassRegistry().removeMetaClass(getRunnableCode())
-                try
-                {
-                    Method remove = GroovyClassLoader.class.getDeclaredMethod("removeClassCacheEntry", String.class)
-                    remove.setAccessible(true)
-                    remove.invoke(gcl, getRunnableCode().getName())
-                }
-                catch (Exception e)
-                {
-                    LOG.warn("Unable to remove cached GroovyExpression from GroovyClassLoader", e)
-                }
-            }
+        {   // Remove the compiled class from the cell's cache.
+            // This is because the cell is marked as cacheable meaning the result of the
+            // execution is cached, so there is no need to hold a reference to the compiled class.
             setRunnableCode(null)
         }
         return result
@@ -107,36 +85,13 @@ public abstract class GroovyBase extends UrlCommandCell
 
     protected abstract String buildGroovy(Map<String, Object> ctx, String theirGroovy)
 
-    protected abstract String getMethodToExecute(Map<String, Object> ctx)
-
-    static void clearCache(ApplicationID appId)
+    protected static void clearCache(ApplicationID appId)
     {
-        Map<String, Class> compiledMap = getCompiledClassesCache(appId)
+        Map<String, Class> compiledMap = getCache(appId, compiledClasses)
         compiledMap.clear()
-
-        Map<String, Constructor> constructorMap = getConstructorCache(appId)
-        constructorMap.clear()
-
-        Map<String, Method> runMethodMap = getRunMethodCache(appId)
-        runMethodMap.clear()
     }
 
-    private static Map<String, Class> getCompiledClassesCache(ApplicationID appId)
-    {
-        return getCache(appId, compiledClasses)
-    }
-
-    private static Map<String, Constructor> getConstructorCache(ApplicationID appId)
-    {
-        return getCache(appId, constructors)
-    }
-
-    private static Map<String, Method> getRunMethodCache(ApplicationID appId)
-    {
-        return getCache(appId, runMethods)
-    }
-
-    private static <T> Map<String, T> getCache(ApplicationID appId, ConcurrentMap<ApplicationID, ConcurrentMap<String, T>> container)
+    protected static <T> Map<String, T> getCache(ApplicationID appId, ConcurrentMap<ApplicationID, ConcurrentMap<String, T>> container)
     {
         ConcurrentMap<String, T> map = container[appId]
 
@@ -156,7 +111,17 @@ public abstract class GroovyBase extends UrlCommandCell
     {
         try
         {
-            return executeGroovy(ctx)
+            Class code = getRunnableCode()
+            if (code == null)
+            {
+                NCube ncube = getNCube(ctx)
+                throw new IllegalStateException('Code cleared while getCell() was executing, n-cube: ' + ncube.name + ", app: " + ncube.applicationID)
+            }
+            final NCubeGroovyExpression exp = (NCubeGroovyExpression) code.newInstance()
+            exp.input = getInput(ctx)
+            exp.output = getOutput(ctx)
+            exp.ncube = getNCube(ctx)
+            return invokeRunMethod(exp, ctx)
         }
         catch (InvocationTargetException e)
         {
@@ -167,60 +132,13 @@ public abstract class GroovyBase extends UrlCommandCell
     /**
      * Fetch constructor (from cache, if cached) and instantiate GroovyExpression
      */
-    protected Object executeGroovy(final Map<String, Object> ctx)
-    {
-        NCube cube = getNCube(ctx)
-        Map<String, Constructor> constructorMap = getConstructorCache(cube.applicationID)
-
-        // Step 1: Construct the object (use default constructor)
-        Constructor c = constructorMap[cmdHash]
-        if (c == null)
-        {
-            c = getRunnableCode().getConstructor()
-            if (!isCacheable())
-            {
-                // Do NOT cache the constructor when the entire cell value is cache:true, because
-                // the class is going to be dropped and the return value cached.
-                constructorMap[cmdHash] = c
-            }
-        }
-
-        // Step 2: Assign the input, output, and ncube pointers to the groovy cell instance.
-        final Object instance = c.newInstance()
-        if (instance instanceof NCubeGroovyExpression)
-        {
-            NCubeGroovyExpression exp = (NCubeGroovyExpression) instance
-            exp.input = getInput(ctx)
-            exp.output = getOutput(ctx)
-            exp.ncube = cube
-        }
-
-        // Step 3: Call the run() [for expressions] or run(Signature) [for controllers] method
-        Map<String, Method> runMethodMap = getRunMethodCache(cube.applicationID)
-        Method runMethod = runMethodMap[cmdHash]
-        if (runMethod == null)
-        {
-            runMethod = getRunMethod()
-            if (!isCacheable())
-            {
-                // Do NOT cache the run() method when the entire cell value is cache:true, because
-                // the class is going to be dropped and the return value cached.
-                runMethodMap[cmdHash] = runMethod
-            }
-        }
-
-        return invokeRunMethod(runMethod, instance, ctx)
-    }
-
-    protected abstract Method getRunMethod() throws NoSuchMethodException
-
-    protected abstract Object invokeRunMethod(Method runMethod, Object instance, Map<String, Object> ctx) throws Throwable
+    protected abstract Object invokeRunMethod(NCubeGroovyExpression instance, Map<String, Object> ctx) throws Throwable
 
     /**
      * Conditionally compile the passed in command.  If it is already compiled, this method
      * immediately returns.  Insta-check because it is just a ref == null check.
      */
-    public void prepare(Object data, Map<String, Object> ctx)
+    void prepare(Object data, Map<String, Object> ctx)
     {
         if (getRunnableCode() != null)
         {   // If the code for the cell has already been compiled, return the compiled class.
@@ -229,7 +147,7 @@ public abstract class GroovyBase extends UrlCommandCell
 
         computeCmdHash(data, ctx)
         NCube cube = getNCube(ctx)
-        Map<String, Class> compiledMap = getCompiledClassesCache(cube.applicationID)
+        Map<String, Class> compiledMap = getCache(cube.applicationID, compiledClasses)
 
         if (compiledMap.containsKey(cmdHash))
         {   // Already been compiled, re-use class (different cell, but has identical source or URL as other expression).
@@ -237,11 +155,64 @@ public abstract class GroovyBase extends UrlCommandCell
             return
         }
 
-        Class groovyCode = compile(ctx)
-        setRunnableCode(groovyCode)
-        if (!isCacheable())
+        Class compiledGroovy = compile(ctx)
+        setRunnableCode(compiledGroovy)
+    }
+
+    protected Class compile(Map<String, Object> ctx)
+    {
+        NCube cube = getNCube(ctx)
+        String url = getUrl()
+        boolean isUrlUsed = StringUtilities.hasContent(url)
+        String grvSrcCode
+        GroovyClassLoader gcLoader
+
+        if (cube.getName().toLowerCase().startsWith("sys."))
+        {   // No URLs allowed, nor code from sys.classpath when executing these cubes
+            gcLoader = (GroovyClassLoader)NCubeManager.getLocalClassloader(cube.applicationID)
+            grvSrcCode = getCmd()
+        }
+        else if (isUrlUsed)
         {
-            compiledMap[cmdHash] = getRunnableCode()
+            if (url.endsWith('.groovy'))
+            {
+                // If a class exists already with the same name as the groovy file (substituting slashes for dots),
+                // then attempt to find and return that class without going through the resource location and parsing
+                // code. This can be useful, for example, if a build process pre-builds and load coverage enhanced
+                // versions of the classes.
+                try
+                {
+                    String className = url - '.groovy'
+                    className = className.replace('/', '.')
+                    return Class.forName(className)
+                }
+                catch (Exception ignored)
+                { }
+            }
+
+            URL groovySourceUrl = getActualUrl(ctx)
+            gcLoader = (GroovyClassLoader) NCubeManager.getUrlClassLoader(cube.applicationID, getInput(ctx))
+            grvSrcCode = StringUtilities.createString(UrlUtilities.getContentFromUrl(groovySourceUrl, true), "UTF-8")
+        }
+        else
+        {
+            gcLoader = (GroovyClassLoader)NCubeManager.getUrlClassLoader(cube.applicationID, getInput(ctx))
+            grvSrcCode = getCmd()
+        }
+
+        String groovySource = expandNCubeShortCuts(buildGroovy(ctx, grvSrcCode))
+        Map<String, Class> compiledMap = getCache(cube.applicationID, compiledClasses)
+
+        synchronized (GroovyBase.class)
+        {
+            if (compiledMap.containsKey(cmdHash))
+            {   // Already been compiled, re-use class (different cell, but has identical source or URL as other expression).
+                return compiledMap[cmdHash]
+            }
+
+            Class clazz = gcLoader.parseClass(groovySource, 'N_' + cmdHash + '.groovy')
+            compiledMap[cmdHash] = clazz
+            return clazz
         }
     }
 
@@ -249,7 +220,7 @@ public abstract class GroovyBase extends UrlCommandCell
      * Compute SHA1 hash for this CommandCell.  The tricky bit here is that the command can be either
      * defined inline or via a URL.  If defined inline, then the command hash is SHA1(command text).  If
      * defined through a URL, then the command hash is SHA1(command URL + GroovyClassLoader URLs.toString).
-     s    */
+     */
     private void computeCmdHash(Object data, Map<String, Object> ctx)
     {
         String content
@@ -274,85 +245,40 @@ public abstract class GroovyBase extends UrlCommandCell
         cmdHash = EncryptionUtilities.calculateSHA1Hash(StringUtilities.getBytes(content, "UTF-8"))
     }
 
-    protected Class compile(Map<String, Object> ctx)
-    {
-        NCube cube = getNCube(ctx)
-        String url = getUrl()
-        boolean isUrlUsed = StringUtilities.hasContent(url)
-        if (isUrlUsed && url.endsWith(".groovy"))
-        {
-            // If a class exists already with the same name as the groovy file (substituting slashes for dots),
-            // then attempt to find and return that class without going through the resource location and parsing
-            // code. This can be useful, for example, if a build process pre-builds and load coverage enhanced
-            // versions of the classes.
-            try
-            {
-                String className = url.substring(0, url.indexOf(".groovy"))
-                className = className.replace('/', '.')
-                return Class.forName(className)
-            }
-            catch (Exception ignored)
-            { }
-        }
-
-        String grvSrcCode
-        GroovyClassLoader gcLoader
-
-        if (cube.getName().toLowerCase().startsWith("sys."))
-        {   // No URLs allowed, nor code from sys.classpath when executing these cubes
-            gcLoader = (GroovyClassLoader)NCubeManager.getLocalClassloader(cube.applicationID)
-            grvSrcCode = getCmd()
-        }
-        else if (isUrlUsed)
-        {
-            gcLoader = (GroovyClassLoader)NCubeManager.getUrlClassLoader(cube.applicationID, getInput(ctx))
-            URL groovySourceUrl = getActualUrl(ctx)
-            grvSrcCode = StringUtilities.createString(UrlUtilities.getContentFromUrl(groovySourceUrl, true), "UTF-8")
-        }
-        else
-        {
-            gcLoader = (GroovyClassLoader)NCubeManager.getUrlClassLoader(cube.applicationID, getInput(ctx))
-            grvSrcCode = getCmd()
-        }
-        String groovySource = expandNCubeShortCuts(buildGroovy(ctx, grvSrcCode))
-//        Thread.currentThread().setContextClassLoader(gcLoader)
-        return gcLoader.parseClass(groovySource)
-    }
-
-    static String expandNCubeShortCuts(String groovy)
+    protected static String expandNCubeShortCuts(String groovy)
     {
         Matcher m = Regexes.groovyAbsRefCubeCellPattern.matcher(groovy)
-        String exp = m.replaceAll('$1getFixedCubeCell(\'$2\',$3)')
+        String exp = m.replaceAll('$1go($3, \'$2\')')
 
         m = Regexes.groovyAbsRefCubeCellPatternA.matcher(exp)
-        exp = m.replaceAll('$1getFixedCubeCell(\'$2\',$3)')
+        exp = m.replaceAll('$1go($3, \'$2\')')
 
         m = Regexes.groovyAbsRefCellPattern.matcher(exp)
-        exp = m.replaceAll('$1getFixedCell($2)')
+        exp = m.replaceAll('$1go($2)')
 
         m = Regexes.groovyAbsRefCellPatternA.matcher(exp)
-        exp = m.replaceAll('$1getFixedCell($2)')
+        exp = m.replaceAll('$1go($2)')
 
         m = Regexes.groovyRelRefCubeCellPattern.matcher(exp)
-        exp = m.replaceAll('$1getRelativeCubeCell(\'$2\',$3)')
+        exp = m.replaceAll('$1at($3,\'$2\')')
 
         m = Regexes.groovyRelRefCubeCellPatternA.matcher(exp)
-        exp = m.replaceAll('$1getRelativeCubeCell(\'$2\',$3)')
+        exp = m.replaceAll('$1at($3, \'$2\')')
 
         m = Regexes.groovyRelRefCellPattern.matcher(exp)
-        exp = m.replaceAll('$1getRelativeCell($2)')
+        exp = m.replaceAll('$1at($2)')
 
         m = Regexes.groovyRelRefCellPatternA.matcher(exp)
-        exp = m.replaceAll('$1getRelativeCell($2)')
+        exp = m.replaceAll('$1at($2)')
         return exp
     }
 
-    public void getCubeNamesFromCommandText(final Set<String> cubeNames)
+    void getCubeNamesFromCommandText(final Set<String> cubeNames)
     {
         getCubeNamesFromText(cubeNames, getCmd())
     }
 
-    static void getCubeNamesFromText(final Set<String> cubeNames, final String text)
+    protected static void getCubeNamesFromText(final Set<String> cubeNames, final String text)
     {
         if (StringUtilities.isEmpty(text))
         {
@@ -400,6 +326,18 @@ public abstract class GroovyBase extends UrlCommandCell
         {
             cubeNames.add(m.group(2))  // based on Regex pattern - if pattern changes, this could change
         }
+
+        m = Regexes.groovyExplicitAtPattern.matcher(text)
+        while (m.find())
+        {
+            cubeNames.add(m.group(2))  // based on Regex pattern - if pattern changes, this could change
+        }
+
+        m = Regexes.groovyExplicitGoPattern.matcher(text)
+        while (m.find())
+        {
+            cubeNames.add(m.group(2))  // based on Regex pattern - if pattern changes, this could change
+        }
     }
 
     /**
@@ -407,7 +345,7 @@ public abstract class GroovyBase extends UrlCommandCell
      * and add the variableName as a scope (key).
      * @param scopeKeys Set to add required scope keys to.
      */
-    public void getScopeKeys(Set<String> scopeKeys)
+    void getScopeKeys(Set<String> scopeKeys)
     {
         Matcher m = Regexes.inputVar.matcher(getCmd())
         while (m.find())
@@ -416,7 +354,7 @@ public abstract class GroovyBase extends UrlCommandCell
         }
     }
 
-    public static Set<String> getImports(String text, StringBuilder newGroovy)
+    static Set<String> getImports(String text, StringBuilder newGroovy)
     {
         Matcher m = Regexes.importPattern.matcher(text)
         Set<String> importNames = new LinkedHashSet<>()

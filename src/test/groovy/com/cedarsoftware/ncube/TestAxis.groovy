@@ -1,5 +1,4 @@
 package com.cedarsoftware.ncube
-
 import com.cedarsoftware.ncube.exception.AxisOverlapException
 import com.cedarsoftware.ncube.exception.CoordinateNotFoundException
 import com.cedarsoftware.ncube.proximity.LatLon
@@ -8,17 +7,30 @@ import com.cedarsoftware.ncube.util.LongHashSet
 import com.cedarsoftware.util.CaseInsensitiveMap
 import com.cedarsoftware.util.Converter
 import com.cedarsoftware.util.io.JsonWriter
+import groovy.transform.CompileStatic
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.REF_APP
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.REF_AXIS_NAME
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.REF_BRANCH
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.REF_CUBE_NAME
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.REF_STATUS
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.REF_TENANT
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.REF_VERSION
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.TRANSFORM_APP
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.TRANSFORM_BRANCH
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.TRANSFORM_CUBE_NAME
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.TRANSFORM_METHOD_NAME
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.TRANSFORM_STATUS
+import static com.cedarsoftware.ncube.ReferenceAxisLoader.TRANSFORM_VERSION
 import static org.junit.Assert.assertEquals
 import static org.junit.Assert.assertFalse
 import static org.junit.Assert.assertNotEquals
 import static org.junit.Assert.assertNull
 import static org.junit.Assert.assertTrue
 import static org.junit.Assert.fail
-
 /**
  * NCube Axis Tests
  *
@@ -38,6 +50,7 @@ import static org.junit.Assert.fail
  *         See the License for the specific language governing permissions and
  *         limitations under the License.
  */
+@CompileStatic
 class TestAxis
 {
     @Before
@@ -59,7 +72,7 @@ class TestAxis
             axis.addColumn value
             return true
         }
-        catch (AxisOverlapException e)
+        catch (AxisOverlapException ignored)
         {
             return false
         }
@@ -85,7 +98,7 @@ class TestAxis
     {
         Axis axis = new Axis('foo', AxisType.DISCRETE, AxisValueType.LONG, false)
 
-        def map = [foo:'bar','bar':'baz']
+        Map map = [foo:'bar','bar':'baz'] as Map
         axis.addMetaProperties map
 
         assert 'bar' == axis.getMetaProperty('foo')
@@ -153,16 +166,7 @@ class TestAxis
     void testStandardizeColumnValueErrorHandling()
     {
         Axis states = NCubeBuilder.statesAxis
-        try
-        {
-            states.standardizeColumnValue(null)
-            fail("should not make it here")
-        }
-        catch (IllegalArgumentException e)
-        {
-            assert e.message.toLowerCase().contains('null')
-            assert e.message.toLowerCase().contains('cannot be used')
-        }
+        assert null == states.standardizeColumnValue(null)
     }
 
     @Test
@@ -187,18 +191,7 @@ class TestAxis
         }
 
         axis = new Axis('sorted', AxisType.DISCRETE, AxisValueType.LONG, false, Axis.DISPLAY)
-        try
-        {
-            axis.findColumn null
-            fail 'should not make it here'
-        }
-        catch (IllegalArgumentException e)
-        {
-            assert e.message.toLowerCase().contains('null')
-            assert e.message.toLowerCase().contains('sorted')
-            assert e.message.toLowerCase().contains('not have')
-            assert e.message.toLowerCase().contains('default column')
-        }
+        assert null == axis.findColumn(null)
     }
 
     @Test
@@ -247,6 +240,282 @@ class TestAxis
         {
             expected.message.toLowerCase().contains("unsupported value type")
         }
+    }
+
+    @Test
+    void testRangeOrderSorted()
+    {
+        Axis axis = new Axis("Age", AxisType.RANGE, AxisValueType.LONG, false, Axis.SORTED)
+        axis.addColumn(new Range(65, 80))
+        axis.addColumn(new Range(18, 30))
+        axis.addColumn(new Range(0, 18))
+
+        List<Column> cols = axis.getColumns()
+        assert cols[0].value == new Range(0L, 18L)
+        assert cols[1].value == new Range(18L, 30L)
+        assert cols[2].value == new Range(65L, 80L)
+        assert cols.size() == 3
+    }
+
+    @Test
+    void testRangeOrderDisplay()
+    {
+        Axis axis = new Axis("Age", AxisType.RANGE, AxisValueType.LONG, false, Axis.DISPLAY)
+        axis.addColumn(new Range(65, 80))
+        axis.addColumn(new Range(18, 30))
+        axis.addColumn(new Range(0, 18))
+
+        List<Column> cols = axis.getColumns()
+        assert cols[0].value == new Range(65L, 80L)
+        assert cols[1].value == new Range(18L, 30L)
+        assert cols[2].value == new Range(0L, 18L)
+        assert cols.size() == 3
+    }
+
+    @Test
+    void testRangeOrderSortedDefault()
+    {
+        Axis axis = new Axis("Age", AxisType.RANGE, AxisValueType.LONG, true, Axis.SORTED)
+        axis.addColumn(new Range(65, 80))
+        axis.addColumn(new Range(18, 30))
+        axis.addColumn(new Range(0, 18))
+
+        List<Column> cols = axis.getColumns()
+        assert cols[0].value == new Range(0L, 18L)
+        assert cols[1].value == new Range(18L, 30L)
+        assert cols[2].value == new Range(65L, 80L)
+        assert cols[3].value == null
+        assert cols.size() == 4
+    }
+
+    @Test
+    void testRangeOrderDisplayDefault()
+    {
+        Axis axis = new Axis("Age", AxisType.RANGE, AxisValueType.LONG, true, Axis.DISPLAY)
+        axis.addColumn(new Range(65, 80))
+        axis.addColumn(new Range(18, 30))
+        axis.addColumn(new Range(0, 18))
+
+        List<Column> cols = axis.getColumns()
+        assert cols[0].value == new Range(65L, 80L)
+        assert cols[1].value == new Range(18L, 30L)
+        assert cols[2].value == new Range(0L, 18L)
+        assert cols[3].value == null
+        assert cols.size() == 4
+    }
+
+    @Test
+    void testRangeOrderSortedWithoutDefault()
+    {
+        Axis axis = new Axis("Age", AxisType.RANGE, AxisValueType.LONG, true, Axis.SORTED)
+        axis.addColumn(new Range(65, 80))
+        axis.addColumn(new Range(18, 30))
+        axis.addColumn(new Range(0, 18))
+
+        List<Column> cols = axis.getColumnsWithoutDefault()
+        assert cols[0].value == new Range(0L, 18L)
+        assert cols[1].value == new Range(18L, 30L)
+        assert cols[2].value == new Range(65L, 80L)
+        assert cols.size() == 3
+    }
+
+    @Test
+    void testRangeOrderDisplayWithoutDefault()
+    {
+        Axis axis = new Axis("Age", AxisType.RANGE, AxisValueType.LONG, true, Axis.DISPLAY)
+        axis.addColumn(new Range(65, 80))
+        axis.addColumn(new Range(18, 30))
+        axis.addColumn(new Range(0, 18))
+
+        List<Column> cols = axis.getColumnsWithoutDefault()
+        assert cols[0].value == new Range(65L, 80L)
+        assert cols[1].value == new Range(18L, 30L)
+        assert cols[2].value == new Range(0L, 18L)
+        assert cols.size() == 3
+    }
+
+    @Test
+    void testRangeSetOrderSorted()
+    {
+        Axis axis = new Axis("Age", AxisType.SET, AxisValueType.LONG, false, Axis.SORTED)
+        axis.addColumn(new Range(65, 80))
+        axis.addColumn(18)
+        axis.addColumn(new Range(0, 18))
+
+        List<Column> cols = axis.getColumns()
+        assert cols[0].value == new RangeSet(new Range(0L, 18L))
+        assert cols[1].value == new RangeSet(18L)
+        assert cols[2].value == new RangeSet(new Range(65L, 80L))
+        assert cols.size() == 3
+    }
+
+    @Test
+    void testRangeSetOrderDisplay()
+    {
+        Axis axis = new Axis("Age", AxisType.SET, AxisValueType.LONG, false, Axis.DISPLAY)
+        axis.addColumn(new Range(65, 80))
+        axis.addColumn(18)
+        axis.addColumn(new Range(0, 18))
+
+        List<Column> cols = axis.getColumns()
+        assert cols[0].value == new RangeSet(new Range(65L, 80L))
+        assert cols[1].value == new RangeSet(18L)
+        assert cols[2].value == new RangeSet(new Range(0L, 18L))
+        assert cols.size() == 3
+    }
+
+    @Test
+    void testRangeSetOrderSortedDefault()
+    {
+        Axis axis = new Axis("Age", AxisType.SET, AxisValueType.LONG, true, Axis.SORTED)
+        axis.addColumn(new Range(65, 80))
+        axis.addColumn(18)
+        axis.addColumn(new Range(0, 18))
+
+        List<Column> cols = axis.getColumns()
+        assert cols[0].value == new RangeSet(new Range(0L, 18L))
+        assert cols[1].value == new RangeSet(18L)
+        assert cols[2].value == new RangeSet(new Range(65L, 80L))
+        assert cols[3].value == null
+        assert cols.size() == 4
+    }
+
+    @Test
+    void testRangeSetOrderDisplayDefault()
+    {
+        Axis axis = new Axis("Age", AxisType.SET, AxisValueType.LONG, true, Axis.DISPLAY)
+        axis.addColumn(new Range(65, 80))
+        axis.addColumn(18)
+        axis.addColumn(new Range(0, 18))
+
+        List<Column> cols = axis.getColumns()
+        assert cols[0].value == new RangeSet(new Range(65L, 80L))
+        assert cols[1].value == new RangeSet(18L)
+        assert cols[2].value == new RangeSet(new Range(0L, 18L))
+        assert cols[3].value == null
+        assert cols.size() == 4
+    }
+
+    @Test
+    void testRangeSetOrderSortedWithoutDefault()
+    {
+        Axis axis = new Axis("Age", AxisType.SET, AxisValueType.LONG, true, Axis.SORTED)
+        axis.addColumn(new Range(65, 80))
+        axis.addColumn(18)
+        axis.addColumn(new Range(0, 18))
+
+        List<Column> cols = axis.getColumnsWithoutDefault()
+        assert cols[0].value == new RangeSet(new Range(0L, 18L))
+        assert cols[1].value == new RangeSet(18L)
+        assert cols[2].value == new RangeSet(new Range(65L, 80L))
+        assert cols.size() == 3
+    }
+
+    @Test
+    void testRangeSetOrderDisplayWithoutDefault()
+    {
+        Axis axis = new Axis("Age", AxisType.SET, AxisValueType.LONG, true, Axis.DISPLAY)
+        axis.addColumn(new Range(65, 80))
+        axis.addColumn(18)
+        axis.addColumn(new Range(0, 18))
+
+        List<Column> cols = axis.getColumnsWithoutDefault()
+        assert cols[0].value == new RangeSet(new Range(65L, 80L))
+        assert cols[1].value == new RangeSet(18L)
+        assert cols[2].value == new RangeSet(new Range(0L, 18L))
+        assert cols.size() == 3
+    }
+
+    @Test
+    void testDiscreteOrderSorted()
+    {
+        Axis axis = new Axis("Age", AxisType.DISCRETE, AxisValueType.LONG, false, Axis.SORTED)
+        axis.addColumn(65)
+        axis.addColumn(18)
+        axis.addColumn(0)
+
+        List<Column> cols = axis.getColumns()
+        assert cols[0].value == 0L
+        assert cols[1].value == 18L
+        assert cols[2].value == 65L
+        assert cols.size() == 3
+    }
+
+    @Test
+    void testDiscreteOrderDisplay()
+    {
+        Axis axis = new Axis("Age", AxisType.DISCRETE, AxisValueType.LONG, false, Axis.DISPLAY)
+        axis.addColumn(65)
+        axis.addColumn(18)
+        axis.addColumn(0)
+
+        List<Column> cols = axis.getColumns()
+        assert cols[0].value == 65L
+        assert cols[1].value == 18L
+        assert cols[2].value == 0L
+        assert cols.size() == 3
+    }
+
+    @Test
+    void testDiscreteOrderSortedDefault()
+    {
+        Axis axis = new Axis("Age", AxisType.DISCRETE, AxisValueType.LONG, true, Axis.SORTED)
+        axis.addColumn(65)
+        axis.addColumn(18)
+        axis.addColumn(0)
+
+        List<Column> cols = axis.getColumns()
+        assert cols[0].value == 0L
+        assert cols[1].value == 18L
+        assert cols[2].value == 65L
+        assert cols[3].value == null
+        assert cols.size() == 4
+    }
+
+    @Test
+    void testDiscreteOrderDisplayDefault()
+    {
+        Axis axis = new Axis("Age", AxisType.DISCRETE, AxisValueType.LONG, true, Axis.DISPLAY)
+        axis.addColumn(65)
+        axis.addColumn(18)
+        axis.addColumn(0)
+
+        List<Column> cols = axis.getColumns()
+        assert cols[0].value == 65L
+        assert cols[1].value == 18L
+        assert cols[2].value == 0L
+        assert cols[3].value == null
+        assert cols.size() == 4
+    }
+
+    @Test
+    void testDiscreteOrderSortedWithoutDefault()
+    {
+        Axis axis = new Axis("Age", AxisType.DISCRETE, AxisValueType.LONG, true, Axis.SORTED)
+        axis.addColumn(65)
+        axis.addColumn(18)
+        axis.addColumn(0)
+
+        List<Column> cols = axis.getColumnsWithoutDefault()
+        assert cols[0].value == 0L
+        assert cols[1].value == 18L
+        assert cols[2].value == 65L
+        assert cols.size() == 3
+    }
+
+    @Test
+    void testDiscreteOrderDisplayWithoutDefault()
+    {
+        Axis axis = new Axis("Age", AxisType.DISCRETE, AxisValueType.LONG, true, Axis.DISPLAY)
+        axis.addColumn(65)
+        axis.addColumn(18)
+        axis.addColumn(0)
+
+        List<Column> cols = axis.getColumnsWithoutDefault()
+        assert cols[0].value == 65L
+        assert cols[1].value == 18L
+        assert cols[2].value == 0L
+        assert cols.size() == 3
     }
 
     @Test
@@ -457,7 +726,7 @@ class TestAxis
             assert expected.message.contains('already')
         }
         axis.deleteColumn null
-        assert !axis.hasDefaultColumn()
+        assert axis.getDefaultColumn() == null
     }
 
     @Test
@@ -493,7 +762,7 @@ class TestAxis
             assert expected.message.contains('exists')
         }
 
-        def coord = [gendeR:null]
+        Map coord = [gendeR:null] as Map
         ncube.setCell '1', coord
         assert '1'.equals(ncube.getCell(coord))
 
@@ -564,19 +833,6 @@ class TestAxis
             assert expected.message.toLowerCase().contains('unsupported value type')
         }
 
-        try
-        {
-            Range range = new Range(0, 10)
-            age.addColumn range
-            fail 'should throw exception'
-        }
-        catch (IllegalArgumentException expected)
-        {
-            assert expected.message.contains('only')
-            assert expected.message.contains('add')
-            assert expected.message.contains('RangeSet')
-        }
-
         RangeSet a = new RangeSet()
         RangeSet b = new RangeSet()
         assert a.compareTo(b) == 0
@@ -585,14 +841,14 @@ class TestAxis
     @Test
     void testDeleteColumnFromRangeSetAxis()
     {
-        NCube ncube = NCubeManager.getNCubeFromResource 'testCube4.json'
-        ncube.deleteColumn 'code', 'b'
-        Axis axis = ncube.getAxis 'code'
+        NCube ncube = NCubeManager.getNCubeFromResource('testCube4.json')
+        ncube.deleteColumn('code', 'b')
+        Axis axis = ncube['code'] as Axis
         assert axis.id != 0
         assert axis.columns.size() == 2
         axis.deleteColumn('o')
         assert axis.columns.size() == 1
-        assert axis.idToCol.size() == 1
+        assert axis.size() == 1
         assertNull axis.deleteColumnById(9)
     }
 
@@ -640,7 +896,7 @@ class TestAxis
         assertNull c.metaProperties.get('foo')
 
         c.clearMetaProperties()
-        c.addMetaProperties([BaZ:'qux'])
+        c.addMetaProperties([BaZ:'qux'] as Map)
         assert 'qux' == c.metaProperties.get('baz')
     }
 
@@ -655,7 +911,7 @@ class TestAxis
         c.setMetaProperty 'foo', 'bar'
 
         assert 'Axis: foo [DISCRETE, STRING, default-column, sorted]\n' +
-                '  metaProps: {foo=bar}' == c.toString()
+                '  metaProps: [foo:bar]' == c.toString()
     }
 
     @Test
@@ -693,12 +949,12 @@ class TestAxis
 
         // Doubles
         Axis doubles = new Axis('bigDec', AxisType.DISCRETE, AxisValueType.DOUBLE, false)
-        assertEquals(-1.0, doubles.convertStringToColumnValue('-1'), 0.000001d)
-        assertEquals(0.0, doubles.convertStringToColumnValue('0'), 0.000001d)
-        assertEquals(1.0, doubles.convertStringToColumnValue('1'), 0.00001d)
-        assertEquals(12345678901234.0, doubles.convertStringToColumnValue('12345678901234'), 0.00001d)
-        assertEquals(-12345678901234.0, doubles.convertStringToColumnValue('-12345678901234'), 0.00001d)
-        assertEquals(-12345.678901234d, doubles.convertStringToColumnValue('-12345.678901234'), 0.00001d)
+        assertEquals(-1.0, (double) doubles.convertStringToColumnValue('-1'), 0.000001d)
+        assertEquals(0.0, (double) doubles.convertStringToColumnValue('0'), 0.000001d)
+        assertEquals(1.0, (double) doubles.convertStringToColumnValue('1'), 0.00001d)
+        assertEquals(12345678901234.0, (double) doubles.convertStringToColumnValue('12345678901234'), 0.00001d)
+        assertEquals(-12345678901234.0, (double) doubles.convertStringToColumnValue('-12345678901234'), 0.00001d)
+        assertEquals(-12345.678901234d, (double) doubles.convertStringToColumnValue('-12345.678901234'), 0.00001d)
 
         // Dates
         Axis dates = new Axis('Dates', AxisType.DISCRETE, AxisValueType.DATE, false)
@@ -935,7 +1191,7 @@ class TestAxis
         Axis axis2 = new Axis('loc', AxisType.SET, AxisValueType.LONG, false)
         Column colAdded = axis2.addColumn('[1, 2]')
         colAdded.id = -1
-        axis.updateColumns axis2
+        axis.updateColumns(axis2.getColumns())
 
         assert 2 == axis.columns.size()
         Column col = axis.columnsWithoutDefault.get(0)
@@ -954,7 +1210,7 @@ class TestAxis
         cols.get(0).id = axis1.columnsWithoutDefault.get(0).id
         cols.get(0).setMetaProperty('name', 'cheese')
         cols.get(0).setMetaProperty('foo', 'bar')
-        axis1.updateColumns(axis2)
+        axis1.updateColumns(axis2.getColumns())
 
         assert 2 == axis1.columns.size()
         Column col = axis1.columnsWithoutDefault.get(0)
@@ -974,9 +1230,9 @@ class TestAxis
         rs.add(new Range(50, 60))
         axis.addColumn(rs)
         assert 2 == axis.columns.size()
-        assert 3 == axis.rangeToCol.size()
+        assert 3 == axis.rangeToCol.asMapOfRanges().size()
         axis.deleteColumn(15)
-        assert 1 == axis.rangeToCol.size()
+        assert 1 == axis.rangeToCol.asMapOfRanges().size()
         assert 1 == axis.columns.size()
     }
 
@@ -992,9 +1248,7 @@ class TestAxis
         rs.add 50
         axis.addColumn rs
         assert 2 == axis.columns.size()
-        assert 3 == axis.discreteToCol.size()
         axis.deleteColumn 30
-        assert 1 == axis.discreteToCol.size()
         assert 1 == axis.columns.size()
     }
 
@@ -1006,7 +1260,7 @@ class TestAxis
         axis2.addColumn '[1, 2]'
         try
         {
-            axis.updateColumns(axis2)
+            axis.updateColumns(axis2.getColumns())
             fail()
         }
         catch (IllegalArgumentException e)
@@ -1044,7 +1298,7 @@ class TestAxis
         }
         catch (IllegalArgumentException e)
         {
-            assert e.message.toLowerCase().contains("cannot be parsed as a set")
+            assert e.message.toLowerCase().contains("range value cannot be null")
         }
 
         try
@@ -1054,7 +1308,7 @@ class TestAxis
         }
         catch (IllegalArgumentException e)
         {
-            assert e.message.toLowerCase().contains("cannot be parsed as a set")
+            assert e.message.toLowerCase().contains("set cannot have null value inside")
         }
     }
 
@@ -1107,14 +1361,14 @@ class TestAxis
         Axis bu = cube.getAxis("BU")
         Column b = bu.findColumn("SHS")
 
-        Set<Long> longCoord = new LongHashSet()
-        longCoord.add(t.id)
-        longCoord.add(v.id)
-        longCoord.add(b.id)
+        LongHashSet longCoord = new LongHashSet()
+        longCoord.add(t.id as Long)
+        longCoord.add(v.id as Long)
+        longCoord.add(b.id as Long)
 
         // Make sure all columns are bound correctly
         def coord = new CaseInsensitiveMap()
-        Set<Long> boundCols = cube.ensureFullCoordinate(longCoord)
+        LongHashSet boundCols = cube.ensureFullCoordinate(longCoord)
         for (Long colId : boundCols)
         {
             assertTrue(colId == t.id || colId == v.id || colId == b.id)
@@ -1127,7 +1381,7 @@ class TestAxis
         }
 
         Column t2 = trailor.findColumn("L3A")
-        longCoord.add(t2.id)
+        longCoord.add(t2.id as Long)
         try
         {
             coord = cube.getTestInputCoordinateFromIds(longCoord)
@@ -1143,7 +1397,7 @@ class TestAxis
         {
             longCoord.remove(t2.id)
             longCoord.remove(t.id)
-            coord = cube.getTestInputCoordinateFromIds(longCoord)
+            cube.getTestInputCoordinateFromIds(longCoord)
             fail()
         }
         catch (IllegalArgumentException e)
@@ -1177,7 +1431,7 @@ class TestAxis
         Axis genderAxis = NCubeBuilder.getGenderAxis(false)
         ncube.addAxis(genderAxis)
 
-        def coord = [Gender:'Male']
+        Map coord = [Gender:'Male'] as Map
         ncube.setCell(0, coord)
         coord.Gender = 'Female'
         ncube.setCell(1, coord)
@@ -1204,7 +1458,7 @@ class TestAxis
 
         try
         {
-            coord.put("Gender", "Jones")
+            coord.Gender = "Jones"
             ncube.getCell(coord)
             fail()
         }
@@ -1219,22 +1473,20 @@ class TestAxis
         // 'null' value to find on String axis:
         try
         {
-            coord.put("Gender", null)
+            coord.Gender = null
             ncube.getCell(coord)
             fail()
         }
-        catch (IllegalArgumentException e)
+        catch (CoordinateNotFoundException e)
         {
             assert e.message.toLowerCase().contains('null')
-            assert e.message.toLowerCase().contains('passed to axis')
-            assert e.message.toLowerCase().contains('not have')
-            assert e.message.toLowerCase().contains('default column')
+            assert e.message.toLowerCase().contains('not found on axis')
         }
 
         // Illegal value to find on String axis:
         try
         {
-            coord.put("Gender", 8)
+            coord.Gender = 8
             ncube.getCell(coord)
             fail()
         }
@@ -1265,8 +1517,6 @@ class TestAxis
         }
         catch (IllegalArgumentException e)
         {
-            assert e.message.toLowerCase().contains('input')
-            assert e.message.toLowerCase().contains('not contain')
             assert e.message.toLowerCase().contains('required scope')
         }
 
@@ -1280,8 +1530,6 @@ class TestAxis
         }
         catch (IllegalArgumentException e)
         {
-            assert e.message.toLowerCase().contains('input')
-            assert e.message.toLowerCase().contains('not contain')
             assert e.message.toLowerCase().contains('required scope')
         }
     }
@@ -1356,6 +1604,112 @@ class TestAxis
     }
 
     @Test
+    void testNearestDate()
+    {
+        Axis points = new Axis("Date", AxisType.NEAREST, AxisValueType.DATE, false)
+        points.addColumn(Converter.convert("2000/01/01", Date.class) as Date)
+        points.addColumn(Converter.convert("2016/06/06", Date.class) as Date)
+        points.addColumn(Converter.convert("1970/01/01", Date.class) as Date)
+        points.addColumn(Converter.convert("2005/05/31", Date.class) as Date)
+        points.addColumn(Converter.convert("1991/10/05", Date.class) as Date)
+
+        Column col = points.findColumn(Converter.convert("1930/07/09", Date.class) as Date)
+        assert col.toString() == '1970-01-01'
+
+        col = points.findColumn(Converter.convert("1969/12/31", Date.class) as Date)
+        assert col.toString() == '1970-01-01'
+
+        col = points.findColumn(Converter.convert("1970/01/01", Date.class) as Date)
+        assert col.toString() == '1970-01-01'
+
+        col = points.findColumn(Converter.convert("1970/01/02", Date.class) as Date)
+        assert col.toString() == '1970-01-01'
+
+        col = points.findColumn(Converter.convert("1980/11/17", Date.class) as Date)
+        assert col.toString() == '1970-01-01'
+
+        col = points.findColumn(Converter.convert("1980/11/18", Date.class) as Date)
+        assert col.toString() == '1991-10-05'
+
+        col = points.findColumn(Converter.convert("2010/08/10", Date.class) as Date)
+        assert col.toString() == '2005-05-31'
+
+        col = points.findColumn(Converter.convert("2016/06/05", Date.class) as Date)
+        assert col.toString() == '2016-06-06'
+
+        col = points.findColumn(Converter.convert("2016/06/06", Date.class) as Date)
+        assert col.toString() == '2016-06-06'
+
+        col = points.findColumn(Converter.convert("2016/06/07", Date.class) as Date)
+        assert col.toString() == '2016-06-06'
+
+        col = points.findColumn(Converter.convert("2316/12/25", Date.class) as Date)
+        assert col.toString() == '2016-06-06'
+    }
+
+    @Test
+    void testNearestLogarithmic()
+    {
+        Axis points = new Axis("Point", AxisType.NEAREST, AxisValueType.DOUBLE, false)
+        points.addColumn(100d)
+        points.addColumn(10000d)
+        points.addColumn(10d)
+        points.addColumn(1000d)
+        points.addColumn(0d)
+
+        Column col = points.findColumn(-123456789012345678L)
+        assert col.value == 0d
+
+        col = points.findColumn(-1)
+        assert col.value == 0d
+
+        col = points.findColumn(-0.000001)
+        assert col.value == 0d
+
+        col = points.findColumn(0)
+        assert col.value == 0d
+
+        col = points.findColumn(0.000001)
+        assert col.value == 0d
+
+        col = points.findColumn(1)
+        assert col.value == 0d
+
+        col = points.findColumn(4)
+        assert col.value == 0d
+
+        col = points.findColumn(5)
+        assert col.value == 0d
+
+        col = points.findColumn(5.00001d)
+        assert col.value == 10d
+
+        col = points.findColumn(6)
+        assert col.value == 10d
+
+        col = points.findColumn(9)
+        assert col.value == 10d
+
+        col = points.findColumn(10)
+        assert col.value == 10d
+
+        col = points.findColumn(11)
+        assert col.value == 10d
+
+        col = points.findColumn(9999.99999d)
+        assert col.value == 10000d
+
+        col = points.findColumn(10000)
+        assert col.value == 10000d
+
+        col = points.findColumn(10000.0000001d)
+        assert col.value == 10000d
+
+        col = points.findColumn(123456789012345678L)
+        assert col.value == 10000d
+    }
+
+    @Test
     void testNearestAxisTypePoint3D()
     {
         NCube<String> ncube = new NCube<String>("Nearest3D")
@@ -1370,7 +1724,7 @@ class TestAxis
         points.addColumn(new Point3D(0.0, 0.0, -1.0))
         ncube.addAxis(points)
 
-        def coord = [Point:new Point3D(0.0, 0.0, 0.0)]
+        Map coord = [Point:new Point3D(0.0, 0.0, 0.0)] as Map
         ncube.setCell("0.0, 0.0, 0.0", coord)
         coord.Point = new Point3D(1.0, 0.0, 0.0)
         ncube.setCell("1.0, 0.0, 0.0", coord)
@@ -1466,11 +1820,11 @@ class TestAxis
         assertEquals(sun.value, "aSun")
 
         List<Column> cols = dow.columnsWithoutDefault
-        assertEquals(cols.get(4).value, "aMon")
-        assertEquals(cols.get(5).value, "aSun")
-        assertEquals(cols.get(6).value, "aWed")
+        assertEquals(cols.get(0).value, "aMon")
+        assertEquals(cols.get(2).value, "aWed")
+        assertEquals(cols.get(6).value, "aSun")
 
-        assertEquals(-1, cols.get(4).compareTo(new Column(null, dow.nextColId)))
+        assertEquals(1, cols.get(4).compareTo(new Column(null, dow.nextColId)))
     }
 
     @Test
@@ -1486,25 +1840,25 @@ class TestAxis
         axis2.addColumn(new Range(20, 30))
         axis2.addColumn(new Range(30, 40))
 
-        Column newCol = axis.createColumnFromValue new Range(10, 20)
+        Column newCol = axis.createColumnFromValue(new Range(10, 20), null)
+        newCol = axis.addColumnInternal(newCol)
         newCol.id = -newCol.id
-        axis.columnsInternal.add newCol
 
-        axis2.updateColumns(axis)
+        axis2.updateColumns(axis.getColumns())
         assert 4 == axis2.columns.size()
 
-        newCol = axis.createColumnFromValue new Range(0, 5)
+        newCol = axis.createColumnFromValue(new Range(0, 5), null)
+        newCol = axis.addColumnInternal(newCol)
         newCol.id = -newCol.id
-        axis.columnsInternal.add newCol
 
-        axis2.updateColumns(axis)
+        axis2.updateColumns(axis.getColumns())
         assert 5 == axis2.columns.size()
 
-        newCol = axis.createColumnFromValue new Range(40, 50)
+        newCol = axis.createColumnFromValue(new Range(40, 50), null)
+        axis.addColumnInternal(newCol)
         newCol.id = -newCol.id
-        axis.columnsInternal.add newCol
 
-        axis2.updateColumns axis
+        axis2.updateColumns(axis.getColumns())
         assert 6 == axis2.columns.size()
 
         for (Column column : axis2.columns)
@@ -1514,11 +1868,11 @@ class TestAxis
 
         // Test remove via updateColumns()
         axis = new Axis('Age', AxisType.RANGE, AxisValueType.LONG, false, Axis.SORTED, 1)
-        axis.addColumn new Range(5, 10)
-        axis.addColumn new Range(20, 30)
-        axis.addColumn new Range(30, 40)
+        axis.addColumn(new Range(5, 10))
+        axis.addColumn(new Range(20, 30))
+        axis.addColumn(new Range(30, 40))
 
-        axis2.updateColumns axis
+        axis2.updateColumns(axis.getColumns())
         assert 3 == axis2.size()
     }
 
@@ -1537,20 +1891,86 @@ class TestAxis
         axis2.addColumn new Range('6', '8')
         axis2.addColumn new Range('0', '2')
 
-        Column newCol = axis.createColumnFromValue new Range('8', '10')
-        newCol.id = -newCol.id
-        axis.columnsInternal.add newCol
+        Column newCol = axis.createColumnFromValue(new Range('8', '10'), null) // String axis
 
         try
         {
-            axis2.updateColumns axis
+            axis.addColumnInternal(newCol)
+        }
+        catch (AxisOverlapException e)
+        { }
+
+        newCol = axis.createColumnFromValue(new Range('8', '9'), null)      // String axis
+        newCol.id = -newCol.id
+        axis2.updateColumns(axis.getColumns())
+    }
+
+    @Test
+    void testUpdateColumnsOverlapFail()
+    {
+        Axis axis = new Axis('days', AxisType.DISCRETE, AxisValueType.STRING, false, Axis.DISPLAY, 1)
+        axis.addColumn('Mon')
+        axis.addColumn('Tue')
+        axis.addColumn('Wed')
+        axis.addColumn('Thu')
+        axis.addColumn('Fri')
+        axis.addColumn('Sat')
+        axis.addColumn('Sun')
+
+        List<Column> columnList = axis.getColumns()
+        axis.deleteColumn('Wed')
+        Column repeatedColumn = axis.addColumn('Wed')
+        repeatedColumn.id = -repeatedColumn.id
+        columnList << repeatedColumn
+
+        Axis axis2 = new Axis('days', AxisType.DISCRETE, AxisValueType.STRING, false, Axis.DISPLAY, 1)
+        axis2.addColumn('Mon')
+        axis2.addColumn('Tue')
+        axis2.addColumn('Wed')
+        axis2.addColumn('Thu')
+        axis2.addColumn('Fri')
+        axis2.addColumn('Sat')
+        axis2.addColumn('Sun')
+
+        try
+        {
+            axis2.updateColumns(columnList)
             fail()
         }
         catch (AxisOverlapException e)
         {
-            assert e.message.toLowerCase().contains('overlap')
-            assert e.message.toLowerCase().contains('exist')
-            assert e.message.toLowerCase().contains('axis')
+            String msg = e.message.toLowerCase()
+            assert msg.contains('matches a value already on axis')
+            assert msg.contains('days')
+            assert msg.contains('wed')
+        }
+    }
+
+    @Test
+    void testUpdateColumnsUpdatedValueFail()
+    {
+        Axis axis = new Axis('days', AxisType.DISCRETE, AxisValueType.STRING, false, Axis.DISPLAY, 1)
+        axis.addColumn('Mon')
+        axis.addColumn('Tue')
+        axis.addColumn('Wed')
+        axis.getColumnById(1000000000001).setValue('Wed')
+
+        Axis axis2 = new Axis('days', AxisType.DISCRETE, AxisValueType.STRING, false, Axis.DISPLAY, 1)
+        axis2.addColumn('Mon')
+        axis2.addColumn('Tue')
+        axis2.addColumn('Wed')
+
+        try
+        {
+            axis2.updateColumns(axis.getColumns())
+            fail()
+        }
+        catch (AxisOverlapException e)
+        {
+            String msg = e.message.toLowerCase()
+            assert msg.contains('matches a value already on axis')
+            assert msg.contains('days')
+            assert msg.contains('wed')
         }
     }
 
@@ -1582,7 +2002,7 @@ class TestAxis
         axis2.addColumn 'Whoops'
         axis2.deleteColumn 'Wed'
 
-        axis2.updateColumns axis
+        axis2.updateColumns(axis.getColumns())
         assert 7 == axis2.size()
         assert 'Mon' == axis2.columns[0].value
         assert 'Tue' == axis2.columns[1].value
@@ -1621,7 +2041,7 @@ class TestAxis
         axis2.addColumn 'Whoops'
         axis2.deleteColumn 'Wed'
 
-        axis2.updateColumns axis
+        axis2.updateColumns(axis.getColumns())
         assert 8 == axis2.size()
         assert 'Mon' == axis2.columns[0].value
         assert 'Tue' == axis2.columns[1].value
@@ -1662,7 +2082,7 @@ class TestAxis
         axis2.addColumn 'Whoops'
         axis2.deleteColumn 'Wed'
 
-        axis2.updateColumns axis
+        axis2.updateColumns(axis.getColumns())
         assert 7 == axis2.size()
         assert 'Mon' == axis2.columns[0].value
         assert 'Tue' == axis2.columns[1].value
@@ -1715,6 +2135,23 @@ class TestAxis
         assertEquals(cols.get(0).value, "alpha")
         assertEquals(cols.get(1).value, "charlie")
         assertEquals(cols.get(2).value, "bravo")
+    }
+
+    @Test
+    void testUpdateColumnsNotLosingCellsInDefaultColumn()
+    {
+        NCube ncube = NCubeBuilder.getDiscrete1DEmptyWithDefault()
+        ncube.setCell('Ohio', [state:'OH'] as Map)
+        ncube.setCell('Texas', [state:'TX'] as Map)
+        ncube.setCell('Alabama', [state:'AL'] as Map)
+        assert 'Alabama' == ncube.getCell([state:'WY'] as Map)          // WY hits Default
+
+        List columns = ncube.getAxis('state').columnsWithoutDefault
+        ncube.updateColumns('state', columns)
+
+        assert 'Ohio' == ncube.getCell([state:'OH'] as Map)
+        assert 'Texas' == ncube.getCell([state:'TX'] as Map)
+        assert 'Alabama' == ncube.getCell([state:'WY'] as Map)          // WY hits Default
     }
 
     @Test
@@ -1873,15 +2310,150 @@ class TestAxis
     }
 
     @Test
-    void testLargeNumberOfColumns()
+    void testRangeOverlap2()
+    {
+        Axis axis = new Axis("numbers", AxisType.RANGE, AxisValueType.LONG, true, Axis.DISPLAY)
+        axis.addColumn(new Range(10, 20))
+        axis.addColumn(new Range(30, 40))
+        axis.addColumn(new Range(50, 60))
+        axis.addColumn(new Range(70, 80))
+        axis.addColumn(new Range(90, 100))
+
+        try
+        {
+            axis.addColumn(new Range(0, 11))
+            fail()
+        }
+        catch (AxisOverlapException ignore)
+        { }
+
+        try
+        {
+            axis.addColumn(new Range(45, 65))
+            fail()
+        }
+        catch (AxisOverlapException ignore)
+        { }
+
+        try
+        {
+            axis.addColumn(new Range(41, 51))
+            fail()
+        }
+        catch (AxisOverlapException ignore)
+        { }
+
+        try
+        {
+            axis.addColumn(new Range(0, 100))
+            fail()
+        }
+        catch (AxisOverlapException ignore)
+        { }
+
+        try
+        {
+            axis.addColumn(new Range(99, 101))
+            fail()
+        }
+        catch (AxisOverlapException ignore)
+        { }
+
+        axis.addColumn(new Range(0, 10))
+        axis.addColumn(new Range(41, 50))
+        axis.addColumn(new Range(100, 200))
+    }
+
+    @Test
+    void testRangeSetOverlap3()
+    {
+        Axis axis = new Axis("numbers", AxisType.SET, AxisValueType.LONG, true, Axis.DISPLAY)
+        RangeSet one = new RangeSet(10)
+        one.add(new Range(13, 20))
+
+        RangeSet two = new RangeSet(30)
+        two.add(new Range(33, 40))
+
+        RangeSet three = new RangeSet(50)
+        three.add(new Range(53, 60))
+
+        RangeSet four = new RangeSet(70)
+        four.add(new Range(73, 80))
+
+        RangeSet five = new RangeSet(90)
+        five.add(new Range(93, 100))
+
+        axis.addColumn(one)
+        axis.addColumn(two)
+        axis.addColumn(three)
+        axis.addColumn(four)
+        axis.addColumn(five)
+        try
+        {
+            axis.addColumn(new Range(0, 11))
+            fail()
+        }
+        catch (AxisOverlapException ignore)
+        { }
+
+        try
+        {
+            axis.addColumn(new Range(12, 21))
+            fail()
+        }
+        catch (AxisOverlapException ignore)
+        { }
+
+        try
+        {
+            axis.addColumn(new Range(41, 51))
+            fail()
+        }
+        catch (AxisOverlapException ignore)
+        { }
+
+        try
+        {
+            axis.addColumn(new Range(0, 110))
+            fail()
+        }
+        catch (AxisOverlapException ignore)
+        { }
+
+        try
+        {
+            axis.addColumn(new Range(89, 92))
+            fail()
+        }
+        catch (AxisOverlapException ignore)
+        { }
+
+        try
+        {
+            axis.addColumn(new Range(99, 101))
+            fail()
+        }
+        catch (AxisOverlapException ignore)
+        { }
+
+        axis.addColumn(new Range(0, 10))
+        axis.addColumn(new Range(11, 12))
+        axis.addColumn(new Range(41, 50))
+        axis.addColumn(new Range(91, 93))
+        axis.addColumn(new Range(100, 200))
+    }
+
+    @Test
+    void testLargeNumberOfRangeSetColumns()
     {
         NCube ncube = new NCube("BigDaddy")
         Axis axis = new Axis("numbers", AxisType.SET, AxisValueType.LONG, true, Axis.DISPLAY)
         ncube.addAxis(axis)
         def coord = [:]
 
+        int largeNumber = 1000000
         long start = System.nanoTime()
-        for (int i = 0; i < 10000; i += 10)
+        for (int i = 0; i < largeNumber; i += 10)
         {
             RangeSet set = new RangeSet(i)
             Range range = new Range(i + 1, i + 4)
@@ -1894,10 +2466,10 @@ class TestAxis
         long stop = System.nanoTime()
 
         double diff = (stop - start) / 1000.0  // usec
-//        println("build 10,000 columns = " + (diff / 1000.0) + " ms")
+        println("build " + (largeNumber / 10) + " SET columns = " + (diff / 1000.0) + " ms")
 
         start = System.nanoTime()
-        for (int i = 0; i < 10000; i += 10)
+        for (int i = 0; i < largeNumber; i += 10)
         {
             coord.numbers = i
             Integer ans = (Integer) ncube.getCell(coord)
@@ -1906,7 +2478,47 @@ class TestAxis
         stop = System.nanoTime()
 
         diff = (stop - start) / 1000.0  // usec
-//        println("lookup 10,000 times large number of columns = " + (diff / 1000.0) + " ms")
+        println("lookup " + (largeNumber / 10) + " times large number of SET columns = " + (diff / 1000.0) + " ms")
+    }
+
+    @Test
+    void testLargeNumberOfDiscreteColumns()
+    {
+        NCube ncube = new NCube("BigDaddy")
+        Axis axis = new Axis("numbers", AxisType.DISCRETE, AxisValueType.LONG, true, Axis.DISPLAY)
+        ncube.addAxis(axis)
+        def coord = [:]
+
+        int largeNumber = 100000;
+        long start = System.nanoTime()
+        for (int i = 0; i < largeNumber; i ++)
+        {
+            axis.addColumn(i)
+        }
+
+        for (int i = 0; i < largeNumber; i ++)
+        {
+            coord.put("numbers", i)
+            ncube.setCell(i * 2, coord)
+        }
+
+        long stop = System.nanoTime()
+
+        double diff = (stop - start) / 1000.0  // usec
+        println("build " + largeNumber + " DISCRETE columns = " + (diff / 1000.0) + " ms")
+
+        start = System.nanoTime()
+        for (int i = 0; i < largeNumber; i++)
+        {
+            coord.numbers = i
+            axis.findColumn(i)
+            Integer ans = (Integer) ncube.getCell(coord)
+            assertEquals(i * 2, ans.intValue())
+        }
+        stop = System.nanoTime()
+
+        diff = (stop - start) / 1000.0  // usec
+        println("lookup " + largeNumber + " times large number of DISCRETE columns = " + (diff / 1000.0) + " ms")
     }
 
     @Test
@@ -1953,21 +2565,21 @@ class TestAxis
         Axis axis = new Axis('ages', AxisType.SET, AxisValueType.BIG_DECIMAL, true, Axis.SORTED)
         RangeSet set = (RangeSet) axis.convertStringToColumnValue('10.1, 20, [50, 90.5], 100.1')
         assert set.size() == 4
-        assert set.get(0) == 10.1
+        assert set.get(0) == 10.1d
         assert set.get(1) == 20
         assert set.get(2) == new Range(50.0, 90.5)
-        assert set.get(3) == 100.1
+        assert set.get(3) == 100.1d
     }
 
     @Test
     void testDateSetParsing()
     {
         Axis axis = new Axis('dates', AxisType.SET, AxisValueType.DATE, true, Axis.SORTED)
-        RangeSet set = (RangeSet) axis.convertStringToColumnValue('10 Dec 1995, 1995/12/25, [1996 dec 17, 2001-01-31], Jun 10th 2010')
+        RangeSet set = (RangeSet) axis.convertStringToColumnValue('"10 Dec 1995", "1995/12/25", ["1996 dec 17", "2001-01-31"], "Jun 10th 2010"')
         assert set.size() == 4
         assert set.get(0) == Converter.convert("10 Dec 1995", Date.class)
         assert set.get(1) == Converter.convert("25 Dec 1995", Date.class)
-        assert set.get(2) == new Range(Converter.convert("1996 dec 17", Date.class), Converter.convert('2001-01-31', Date.class))
+        assert set.get(2) == new Range((Comparable) Converter.convert("1996 dec 17", Date.class), (Comparable) Converter.convert('2001-01-31', Date.class))
         assert set.get(3) == Converter.convert("Jun 10th 2010", Date.class)
     }
 
@@ -1975,14 +2587,14 @@ class TestAxis
     void testStringSetParsing()
     {
         Axis axis = new Axis('strings', AxisType.SET, AxisValueType.STRING, true, Axis.SORTED)
-        RangeSet set = (RangeSet) axis.convertStringToColumnValue('10 Dec 1995, 1995/12/25, [1996 dec 17, 2001-01-31], Jun 10th 2010')
+        RangeSet set = (RangeSet) axis.convertStringToColumnValue('"10 Dec 1995", "1995/12/25", ["1996 dec 17", "2001-01-31"], "Jun 10th 2010"')
         assert set.size() == 4
         assert set.get(0) == "10 Dec 1995"
         assert set.get(1) == "1995/12/25"
         assert set.get(2) == new Range("1996 dec 17", '2001-01-31')
         assert set.get(3) == "Jun 10th 2010"
 
-        set = (RangeSet) axis.convertStringToColumnValue('  The quick, "brown fox", [ "jumps over", the lazy dog], I\'m dead serious, ""this is quoted""')
+        set = (RangeSet) axis.convertStringToColumnValue('  "The quick", "brown fox", [ "jumps over", "the lazy dog"], "I\'m dead serious", "\\"this is quoted\\""')
         assert set.size() == 5
         assert set.get(0) == "The quick"
         assert set.get(1) == "brown fox"
@@ -1995,29 +2607,509 @@ class TestAxis
     void testRuleConditionParsing()
     {
         Axis axis = new Axis('rule', AxisType.RULE, AxisValueType.EXPRESSION, true)
-        GroovyExpression exp = axis.convertStringToColumnValue("true")
+        GroovyExpression exp = (GroovyExpression) axis.convertStringToColumnValue("true")
         assert "true".equals(exp.getCmd())
         assert exp.getUrl() == null
 
-        exp = axis.convertStringToColumnValue("cache|true")
+        exp = (GroovyExpression) axis.convertStringToColumnValue("cache|true")
         assert 'true'.equals(exp.getCmd())
         assert  null == exp.getUrl()
         assert exp.isCacheable()
 
         // These values allow a single-line edit widget to feed a GroovyExpression with all capabilities.
-        exp = axis.convertStringToColumnValue("url|http://www.foxnews.com")
+        exp = (GroovyExpression) axis.convertStringToColumnValue("url|http://www.foxnews.com")
         assert "http://www.foxnews.com".equals(exp.getUrl())
         assert !exp.isCacheable()
 
-        exp = axis.convertStringToColumnValue("url|cache|http://www.foxnews.com")
+        exp = (GroovyExpression) axis.convertStringToColumnValue("url|cache|http://www.foxnews.com")
         assert "http://www.foxnews.com".equals(exp.getUrl())
         assert exp.getCmd() == null
         assert exp.isCacheable()
 
-        exp = axis.convertStringToColumnValue("cache|url|http://www.foxnews.com")
+        exp = (GroovyExpression) axis.convertStringToColumnValue("cache|url|http://www.foxnews.com")
         assert "http://www.foxnews.com".equals(exp.getUrl())
         assert exp.getCmd() == null
         assert exp.isCacheable()
+    }
+
+    @Test
+    void testAddAxisWithSameIdTwice()
+    {
+        Axis axis1 = new Axis('state', AxisType.DISCRETE, AxisValueType.STRING, false, Axis.SORTED, 1)
+        Axis axis2 = new Axis('bu', AxisType.DISCRETE, AxisValueType.STRING, false, Axis.SORTED, 1)
+        NCube ncube = new NCube('test')
+        ncube.addAxis(axis1)
+        try
+        {
+            ncube.addAxis(axis2)
+        }
+        catch (IllegalArgumentException ignore)
+        { }
+    }
+
+    @Test
+    void testReferenceAxisNoDefaultAndBreakReference()
+    {
+        NCube one = NCubeBuilder.getDiscrete1DAlt()
+        assert one.getAxis('state').size() == 2
+        NCubeManager.addCube(ApplicationID.testAppId, one)
+
+        Map<String, Object> args = [:]
+
+        ApplicationID appId = ApplicationID.testAppId
+        args[REF_TENANT] = appId.tenant
+        args[REF_APP] = appId.app
+        args[REF_VERSION] = appId.version
+        args[REF_STATUS] = appId.status
+        args[REF_BRANCH] = appId.branch
+        args[REF_CUBE_NAME] = 'SimpleDiscrete'
+        args[REF_AXIS_NAME] = 'state'
+
+        // stateSource instead of 'state' to prove the axis on the referring cube does not have to have the same name
+        ReferenceAxisLoader refAxisLoader = new ReferenceAxisLoader('Mongo', 'stateSource', args)
+        Axis axis = new Axis('stateSource', 1, false, refAxisLoader)
+        assert axis.getReferenceCubeName() == 'SimpleDiscrete'
+        assert axis.getReferenceAxisName() == 'state'
+        NCube two = new NCube('Mongo')
+        two.addAxis(axis)
+
+        two.setCell('a', [stateSource:'OH'] as Map)
+        two.setCell('b', [stateSource:'TX'] as Map)
+
+        String json = two.toFormattedJson()
+        NCube reload = NCube.fromSimpleJson(json)
+        assert reload.getNumCells() == 2
+        assert 'a' == reload.getCell([stateSource:'OH'] as Map)
+        assert 'b' == reload.getCell([stateSource:'TX'] as Map)
+        assert reload.getAxis('stateSource').isReference()
+
+        // Break reference and verify broken
+        reload.breakAxisReference('stateSource')
+        assert reload.getNumCells() == 2
+        assert 'a' == reload.getCell([stateSource:'OH'] as Map)
+        assert 'b' == reload.getCell([stateSource:'TX'] as Map)
+        assert !reload.getAxis('stateSource').isReference()
+    }
+
+    @Test
+    void testReferenceAxisToReferenceAxis()
+    {
+        NCube one = NCubeBuilder.getDiscrete1DAlt()
+        assert one.getAxis('state').size() == 2
+        NCubeManager.addCube(ApplicationID.testAppId, one)
+
+        Map<String, Object> args = [:]
+
+        ApplicationID appId = ApplicationID.testAppId
+        args[REF_TENANT] = appId.tenant
+        args[REF_APP] = appId.app
+        args[REF_VERSION] = appId.version
+        args[REF_STATUS] = appId.status
+        args[REF_BRANCH] = appId.branch
+        args[REF_CUBE_NAME] = 'SimpleDiscrete'
+        args[REF_AXIS_NAME] = 'state'
+
+        // stateSource instead of 'state' to prove the axis on the referring cube does not have to have the same name
+        ReferenceAxisLoader refAxisLoader = new ReferenceAxisLoader('Mongo', 'stateSource', args)
+        Axis axis = new Axis('stateSource', 1, false, refAxisLoader)
+        NCube two = new NCube('Mongo')
+        two.addAxis(axis)
+
+        two.setCell('a', [stateSource:'OH'] as Map)
+        two.setCell('b', [stateSource:'TX'] as Map)
+        NCubeManager.addCube(ApplicationID.testAppId, two)
+
+        String json = two.toFormattedJson()
+        NCube reload = NCube.fromSimpleJson(json)
+        assert reload.getNumCells() == 2
+        assert 'a' == reload.getCell([stateSource:'OH'] as Map)
+        assert 'b' == reload.getCell([stateSource:'TX'] as Map)
+        assert reload.getAxis('stateSource').isReference()
+
+        args[REF_TENANT] = appId.tenant
+        args[REF_APP] = appId.app
+        args[REF_VERSION] = appId.version
+        args[REF_STATUS] = appId.status
+        args[REF_BRANCH] = appId.branch
+        args[REF_CUBE_NAME] = 'Mongo'
+        args[REF_AXIS_NAME] = 'stateSource'
+
+        ReferenceAxisLoader refAxisLoader3 = new ReferenceAxisLoader('Three', 'stateClone', args)
+        axis = new Axis('stateClone', 1, false, refAxisLoader3)
+        NCube three = new NCube('Three')
+        three.addAxis(axis)
+
+        three.setCell('a', [stateClone:'OH'] as Map)
+        three.setCell('b', [stateClone:'TX'] as Map)
+
+        json = three.toFormattedJson()
+        reload = NCube.fromSimpleJson(json)
+        assert reload.getNumCells() == 2
+        assert 'a' == reload.getCell([stateClone:'OH'] as Map)
+        assert 'b' == reload.getCell([stateClone:'TX'] as Map)
+        assert reload.getAxis('stateClone').isReference()
+    }
+
+    @Test
+    void testReferenceAxisAddedDefault()
+    {
+        NCube one = NCubeBuilder.getDiscrete1DAlt()
+        assert one.getAxis('state').size() == 2
+        NCubeManager.addCube(ApplicationID.testAppId, one)
+
+        Map<String, Object> args = [:]
+
+        ApplicationID appId = ApplicationID.testAppId
+        args[REF_TENANT] = appId.tenant
+        args[REF_APP] = appId.app
+        args[REF_VERSION] = appId.version
+        args[REF_STATUS] = appId.status
+        args[REF_BRANCH] = appId.branch
+        args[REF_CUBE_NAME] = 'SimpleDiscrete'
+        args[REF_AXIS_NAME] = 'state'
+
+        // stateSource instead of 'state' to prove the axis on the referring cube does not have to have the same name
+        ReferenceAxisLoader refAxisLoader = new ReferenceAxisLoader('Mongo', 'stateSource', args)
+        Axis axis = new Axis('stateSource', 1, true, refAxisLoader)
+        NCube two = new NCube('Mongo')
+        two.addAxis(axis)
+
+        two.setCell('a', [stateSource:'OH'] as Map)
+        two.setCell('b', [stateSource:'TX'] as Map)
+        two.setCell('c', [stateSource:'AZ'] as Map)         // Hits Default axis
+
+        String json = two.toFormattedJson()
+        NCube reload = NCube.fromSimpleJson(json)
+        assert reload.getNumCells() == 3
+        assert 'a' == reload.getCell([stateSource:'OH'] as Map)
+        assert 'b' == reload.getCell([stateSource:'TX'] as Map)
+        assert 'c' == reload.getCell([stateSource:'AZ'] as Map)
+        assert 'c' == reload.getCell([stateSource:'blah'] as Map)
+    }
+
+    @Test
+    void testReferenceAxisWithDefault()
+    {
+        NCube one = NCubeBuilder.getDiscrete1DEmptyWithDefault()
+        NCubeManager.addCube(ApplicationID.testAppId, one)
+
+        Map<String, Object> args = [:]
+
+        ApplicationID appId = ApplicationID.testAppId
+        args[REF_TENANT] = appId.tenant
+        args[REF_APP] = appId.app
+        args[REF_VERSION] = appId.version
+        args[REF_STATUS] = appId.status
+        args[REF_BRANCH] = appId.branch
+        args[REF_CUBE_NAME] = 'SimpleDiscrete'
+        args[REF_AXIS_NAME] = 'state'
+
+        // stateSource instead of 'state' to prove the axis on the referring cube does not have to have the same name
+        ReferenceAxisLoader refAxisLoader = new ReferenceAxisLoader('Mongo', 'stateSource', args)
+        Axis axis = new Axis('stateSource', 1, true, refAxisLoader)
+        NCube two = new NCube('Mongo')
+        two.addAxis(axis)
+
+        two.setCell('a', [stateSource:'OH'] as Map)
+        two.setCell('b', [stateSource:'TX'] as Map)
+        two.setCell('c', [stateSource:'AZ'] as Map)         // Hits Default axis
+
+        String json = two.toFormattedJson()
+        NCube reload = NCube.fromSimpleJson(json)
+        assert reload.getNumCells() == 3
+        assert 'a' == reload.getCell([stateSource:'OH'] as Map)
+        assert 'b' == reload.getCell([stateSource:'TX'] as Map)
+        assert 'c' == reload.getCell([stateSource:'AZ'] as Map)
+        assert 'c' == reload.getCell([stateSource:'blah'] as Map)
+    }
+
+    @Test
+    void testReferenceAxisWithTransform()
+    {
+        NCube one = NCubeBuilder.getDiscrete1DLong()
+        assert one.getAxis('code').size() == 3
+        NCubeManager.addCube(ApplicationID.testAppId, one)
+
+        NCube transform = NCubeBuilder.getTransformMultiply()
+        assert transform.getAxis('method').size() == 2
+        NCubeManager.addCube(ApplicationID.testAppId, transform)
+
+        Map<String, Object> args = [:]
+
+        ApplicationID appId = ApplicationID.testAppId
+        args[REF_TENANT] = appId.tenant
+        args[REF_APP] = appId.app
+        args[REF_VERSION] = appId.version
+        args[REF_STATUS] = appId.status
+        args[REF_BRANCH] = appId.branch
+        args[REF_CUBE_NAME] = 'discreteLong'
+        args[REF_AXIS_NAME] = 'code'
+        args[TRANSFORM_APP] = appId.app
+        args[TRANSFORM_VERSION] = appId.version
+        args[TRANSFORM_STATUS] = appId.status
+        args[TRANSFORM_BRANCH] = appId.branch
+        args[TRANSFORM_CUBE_NAME] = 'multiplier'
+        args[TRANSFORM_METHOD_NAME] = 'double'
+
+        // stateSource instead of 'state' to prove the axis on the referring cube does not have to have the same name
+        ReferenceAxisLoader refAxisLoader = new ReferenceAxisLoader('TestTransform', 'age', args)
+        Axis axis = new Axis('age', 1, false, refAxisLoader)
+        NCube two = new NCube('TestTransform')
+        two.addAxis(axis)
+        two.setCell('a', [age:2] as Map)
+        assert 'a' == two.getCell([age:2] as Map)
+
+        two.setCell('b', [age:4] as Map)
+        assert 'b' == two.getCell([age:4] as Map)
+
+        two.setCell('c', [age:6] as Map)
+        assert 'c' == two.getCell([age:6] as Map)
+
+        String json = two.toFormattedJson()
+        NCube reload = NCube.fromSimpleJson(json)
+        assert reload.getNumCells() == 3
+
+        // 1, 2, 3 was transformed to 2, 4, 6
+        assert 'a' == reload.getCell([age:2] as Map)
+        assert 'b' == reload.getCell([age:4] as Map)
+        assert 'c' == reload.getCell([age:6] as Map)
+
+        json = reload
+        assert !json.contains('"columns":{')
+        json = reload.toFormattedJson([indexFormat:true] as Map)
+        assert json.contains('"columns":{')
+    }
+
+    @Test
+    void testReferenceAxisCubeNotExists()
+    {
+        NCube one = NCubeBuilder.getDiscrete1DAlt()
+        assert one.getAxis('state').size() == 2
+        NCubeManager.addCube(ApplicationID.testAppId, one)
+
+        Map<String, Object> args = [:]
+
+        ApplicationID appId = ApplicationID.testAppId
+        args[REF_TENANT] = appId.tenant
+        args[REF_APP] = appId.app
+        args[REF_VERSION] = appId.version
+        args[REF_STATUS] = appId.status
+        args[REF_BRANCH] = appId.branch
+        args[REF_CUBE_NAME] = 'SimpleDiscreteNotExisting'
+        args[REF_AXIS_NAME] = 'state'
+
+        // stateSource instead of 'state' to prove the axis on the referring cube does not have to have the same name
+        ReferenceAxisLoader refAxisLoader = new ReferenceAxisLoader('Mongo', 'stateSource', args)
+        try
+        {
+            new Axis('stateSource', 1, false, refAxisLoader)
+            fail()
+        }
+        catch (IllegalStateException e)
+        {
+            assert e.message.toLowerCase().contains('unable to load')
+            assert e.message.toLowerCase().contains('reference axis')
+            assert e.message.contains('impleDiscreteNotExisting')
+        }
+
+        args[REF_CUBE_NAME] = 'SimpleDiscrete'
+        args[REF_AXIS_NAME] = 'stateNotThere'
+        refAxisLoader = new ReferenceAxisLoader('Mongo', 'stateSource', args)
+        try
+        {
+            new Axis('stateSource', 1, false, refAxisLoader)
+            fail()
+        }
+        catch (IllegalStateException e)
+        {
+            assert e.message.toLowerCase().contains('unable to load')
+            assert e.message.toLowerCase().contains('reference axis')
+            assert e.message.contains('stateNotThere')
+            assert e.message.toLowerCase().contains('not found')
+        }
+    }
+
+    @Test
+    void testNonExistingTransformCube()
+    {
+        NCube one = NCubeBuilder.getDiscrete1DLong()
+        assert one.getAxis('code').size() == 3
+        NCubeManager.addCube(ApplicationID.testAppId, one)
+
+        NCube transform = NCubeBuilder.getTransformMultiply()
+        assert transform.getAxis('method').size() == 2
+        NCubeManager.addCube(ApplicationID.testAppId, transform)
+
+        Map<String, Object> args = [:]
+
+        ApplicationID appId = ApplicationID.testAppId
+        args[REF_TENANT] = appId.tenant
+        args[REF_APP] = appId.app
+        args[REF_VERSION] = appId.version
+        args[REF_STATUS] = appId.status
+        args[REF_BRANCH] = appId.branch
+        args[REF_CUBE_NAME] = 'discreteLong'
+        args[REF_AXIS_NAME] = 'code'
+        args[TRANSFORM_APP] = appId.app
+        args[TRANSFORM_VERSION] = appId.version
+        args[TRANSFORM_STATUS] = appId.status
+        args[TRANSFORM_BRANCH] = appId.branch
+        args[TRANSFORM_CUBE_NAME] = 'multiplierNotThere'
+        args[TRANSFORM_METHOD_NAME] = 'double'
+
+        // stateSource instead of 'state' to prove the axis on the referring cube does not have to have the same name
+        ReferenceAxisLoader refAxisLoader = new ReferenceAxisLoader('TestTransform', 'age', args)
+        try
+        {
+            new Axis('age', 1, false, refAxisLoader)
+            fail()
+        }
+        catch (IllegalStateException e)
+        {
+            assert e.message.toLowerCase().contains('unable to load')
+            assert e.message.contains('TestTransform')
+            assert e.message.toLowerCase().contains('reference axis')
+            assert e.message.toLowerCase().contains('failed to load transform')
+        }
+
+        args[TRANSFORM_CUBE_NAME] = 'discreteLong'  // this cube has no 'method' axis
+        args[TRANSFORM_METHOD_NAME] = 'double'
+        refAxisLoader = new ReferenceAxisLoader('TestTransform', 'age', args)
+        try
+        {
+            new Axis('age', 1, false, refAxisLoader)
+            fail()
+        }
+        catch (IllegalStateException e)
+        {
+            assert e.message.toLowerCase().contains('unable to load')
+            assert e.message.contains('TestTransform')
+            assert e.message.toLowerCase().contains('reference axis (age)')
+            assert e.message.toLowerCase().contains("no 'method' axis")
+        }
+
+        args[TRANSFORM_CUBE_NAME] = 'multiplier'  // this cube has no 'method' axis
+        args[TRANSFORM_METHOD_NAME] = 'doubleNotThere'
+        refAxisLoader = new ReferenceAxisLoader('TestTransform', 'age', args)
+        try
+        {
+            new Axis('age', 1, false, refAxisLoader)
+            fail()
+        }
+        catch (IllegalStateException e)
+        {
+            assert e.message.toLowerCase().contains('unable to load')
+            assert e.message.contains('TestTransform')
+            assert e.message.toLowerCase().contains('reference axis (age)')
+            assert e.message.contains("(doubleNotThere) does not exist")
+        }
+    }
+
+    @Test
+    void testReferenceIntoHigherDimensionCube()
+    {
+        NCube one = NCubeBuilder.getDiscrete1DLong()
+        NCubeManager.addCube(ApplicationID.testAppId, one)
+        NCube two = NCubeBuilder.get5DTestCube()
+        NCubeManager.addCube(ApplicationID.testAppId, two)
+
+        Map args = [:] as Map
+        ApplicationID appId = ApplicationID.testAppId
+        args[REF_TENANT] = appId.tenant
+        args[REF_APP] = appId.app
+        args[REF_VERSION] = appId.version
+        args[REF_STATUS] = appId.status
+        args[REF_BRANCH] = appId.branch
+        args[REF_CUBE_NAME] = 'testMerge'
+        args[REF_AXIS_NAME] = 'state'
+
+        // stateSource instead of 'state' to prove the axis on the referring cube does not have to have the same name
+        ReferenceAxisLoader refAxisLoader = new ReferenceAxisLoader(one.name, 'stateRef', args)
+        Axis state = new Axis('stateRef', 2, false, refAxisLoader)
+        one.addAxis(state)
+
+        Map coord = [:] as Map
+        coord.code ='1'
+        coord.stateRef = 'OH'
+        one.setCell('1.OH', coord)
+
+        coord.code ='2'
+        one.setCell('2.OH', coord)
+
+        coord.code ='3'
+        one.setCell('3.OH', coord)
+
+        coord.code ='1'
+        coord.stateRef = 'TX'
+        one.setCell('1.TX', coord)
+
+        coord.code ='2'
+        one.setCell('2.TX', coord)
+
+        coord.code ='3'
+        one.setCell('3.TX', coord)
+
+        String json = one.toFormattedJson()
+        NCube reload = NCube.fromSimpleJson(json)
+        assert reload.getNumCells() == 6
+
+        coord.code ='1'
+        coord.stateRef = 'OH'
+        assert '1.OH' == one.getCell(coord)
+
+        coord.code ='2'
+        assert '2.OH' == one.getCell(coord)
+
+        coord.code ='3'
+        assert '3.OH' == one.getCell(coord)
+
+        coord.code ='1'
+        coord.stateRef = 'TX'
+        assert '1.TX' == one.getCell(coord)
+
+        coord.code ='2'
+        assert '2.TX' == one.getCell(coord)
+
+        coord.code ='3'
+        assert '3.TX' == one.getCell(coord)
+    }
+
+    @Test
+    void testRefAxisWithMetaProps()
+    {
+        NCube one = NCubeBuilder.getDiscrete1DLong()
+        Axis code = one.getAxis('code')
+        code.setMetaProperty('a', 'alpha')
+        code.setMetaProperty('b', 'ball')
+        code.setMetaProperty('c', 'charlie')
+        NCubeManager.addCube(ApplicationID.testAppId, one)
+        NCube two = new NCube('two')
+
+        Map args = [:] as Map
+        ApplicationID appId = ApplicationID.testAppId
+        args[REF_TENANT] = appId.tenant
+        args[REF_APP] = appId.app
+        args[REF_VERSION] = appId.version
+        args[REF_STATUS] = appId.status
+        args[REF_BRANCH] = appId.branch
+        args[REF_CUBE_NAME] = 'discreteLong'
+        args[REF_AXIS_NAME] = 'code'
+
+        ReferenceAxisLoader refAxisLoader = new ReferenceAxisLoader(one.name, 'code', args)
+        code =  new Axis('code', 1L, false, refAxisLoader)
+        code.setMetaProperty('b', 'bravo')
+        code.setMetaProperty('d', 'delta')
+        two.addAxis(code)
+        NCubeManager.addCube(ApplicationID.testAppId, two)
+
+        String json = two.toFormattedJson()
+        NCube reload = NCube.fromSimpleJson(json)
+
+        Map meta = reload.getAxis('code').getMetaProperties()
+        assert 'alpha' == meta.get('a')
+        assert 'bravo' == meta.get('b')
+        assert 'charlie' == meta.get('c')
+        assert 'delta' == meta.get('d')
     }
 
     private static boolean isValidRange(Axis axis, Range range)

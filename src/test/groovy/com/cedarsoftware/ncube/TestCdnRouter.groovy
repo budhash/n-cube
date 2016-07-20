@@ -2,6 +2,7 @@ package com.cedarsoftware.ncube
 
 import com.cedarsoftware.ncube.util.CdnRouter
 import com.cedarsoftware.ncube.util.CdnRoutingProvider
+import groovy.transform.CompileStatic
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -34,6 +35,7 @@ import static org.mockito.Mockito.when
  *         See the License for the specific language governing permissions and
  *         limitations under the License.
  */
+@CompileStatic
 class TestCdnRouter
 {
     @Before
@@ -96,7 +98,7 @@ class TestCdnRouter
         CdnRouter router = new CdnRouter()
         router.route request, response
 
-        verify(response, times(1)).sendError 500, 'Unable to resolve URL, make sure appropriate resource URLs are added to the sys.classpath cube, URL: tests/does/not/exist/index.html, cube: CdnRouterTest, app: ' + ApplicationID.testAppId
+        verify(response, times(1)).sendError 500, 'Invalid URL in cell (malformed or cannot resolve given classpath): tests/does/not/exist/index.html, cube: CdnRouterTest, app: none / default_app / 999.99.9 / test /'
     }
 
     @Test
@@ -492,7 +494,7 @@ class TestCdnRouter
 
         verify(response, times(1)).addHeader 'content-type', 'text/html'
 
-        def coord = ['content.type':'view', 'content.name':logicalFileName];
+        def coord = ['content.type':'view', 'content.name':logicalFileName] as Map
         String one = (String) cube.getCell(coord)
         String two = (String) cube.getCell(coord)
 
@@ -509,9 +511,9 @@ class TestCdnRouter
     @Test
     void testDefaultRoute()
     {
-        NCube router = NCubeManager.getNCubeFromResource 'cdnRouter.json'
+        NCube router = NCubeManager.getNCubeFromResource('cdnRouter.json')
 
-        Axis axis = router.getAxis 'content.name'
+        Axis axis = router.getAxis('content.name')
         assert 5 == axis.columns.size()
 
         Map coord = new HashMap()

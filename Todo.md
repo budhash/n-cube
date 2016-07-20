@@ -2,10 +2,8 @@ n-cube 'ToDo' list
 ======
 
 ### n-cube engine
-TODO: Write test for NCubeManager.rollbackCube() or remove the API
 * Datatypes
-* OptionalScope
- * Docs on optional scope: mention that optional scope will not be found in URL GroovyExpression cells
+ * Add support for RULE-SET axis (RangeMap with Range and RangeSet).  Allows multi-match ranges with O(Log n) performance.
 * Cell Prototype
  * For cube BAR in app FOO, the prototype could be specified as BAR.prototype - meaning that there is a prototype specific to the cube, -or-
    FOO.prototype meaning that this is the prototype for all expression cells in the app 'FOO' 
@@ -28,8 +26,7 @@ TODO: Write test for NCubeManager.rollbackCube() or remove the API
  * Run all tests
 
 ### n-cube editor (NCE)
-* TODO: Where does cell menu go? (for cut/copy/paste)
-* TODO: Implement optional keys (with minus sign support)
-* TODO: test all regex's related to finding referenced cubes
 * TODO: create visualization of n-cube in NCE
 * Run all tests
+
+* TODO: Figure out what tabs have changed on the backend and return any that need updating.

@@ -3,10 +3,12 @@ import com.cedarsoftware.ncube.exception.*
 import com.cedarsoftware.ncube.formatters.*
 import com.cedarsoftware.ncube.proximity.*
 import com.cedarsoftware.ncube.util.*
-import ncube.grv.exp.cdn.*
-import ncube.grv.method.*
 import com.cedarsoftware.util.*
 import com.cedarsoftware.util.io.*
+import com.google.common.base.*
+import com.google.common.collect.*
+import com.google.common.net.*
+
 
 NCube getCube(cubeName = ncube.name)
 {
@@ -17,7 +19,7 @@ NCube getCube(cubeName = ncube.name)
     NCube cube = NCubeManager.getCube(ncube.applicationID, cubeName)
     if (cube == null)
     {
-        throw new IllegalArgumentException('n-cube: ' + cubeName + ', does not exist in application: ' + ncube.applicationID)
+        throw new IllegalArgumentException('n-cube: ' + cubeName + ', does not exist in app: ' + ncube.applicationID)
     }
     return cube
 }
@@ -27,7 +29,7 @@ Axis getAxis(String axisName, String cubeName = ncube.name)
     Axis axis = getCube(cubeName).getAxis(axisName)
     if (axis == null)
     {
-        throw new IllegalArgumentException('Axis: ' + axisName + ', does not exist on n-cube: ' + cubeName + ', appId: ' + ncube.applicationID)
+        throw new IllegalArgumentException('Axis: ' + axisName + ', does not exist on n-cube: ' + cubeName + ', app: ' + ncube.applicationID)
     }
     return axis
 }
@@ -37,30 +39,46 @@ Column getColumn(Comparable value, String axisName, String cubeName = ncube.name
     return getAxis(axisName, cubeName).findColumn(value)
 }
 
-def getRelativeCell(Map coord)
-{
-    return getCell(coord)
-}
-
-def getRelativeCubeCell(String cubeName, Map coord)
-{
-    return getCell(coord, cubeName)
-}
-
-def getCell(Map coord, String cubeName = ncube.name)
+def at(Map coord, String cubeName = ncube.name, def defaultValue = null)
 {
     input.putAll(coord)
-    return getCube(cubeName).getCell(input, output)
+    return getCube(cubeName).getCell(input, output, defaultValue)
 }
 
-def getFixedCell(Map coord)
+def at(Map coord, String cubeName = ncube.name, def defaultValue = null, ApplicationID appId)
 {
-    return getCube().getCell(coord, output)
+    NCube target = NCubeManager.getCube(appId, cubeName)
+    input.putAll(coord)
+    return target.getCell(input, output, defaultValue)
 }
 
-def getFixedCubeCell(String cubeName, Map coord)
+def go(Map coord, String cubeName = ncube.name, def defaultValue = null)
 {
-    return getCube(cubeName).getCell(coord, output)
+    return getCube(cubeName).getCell(coord, output, defaultValue)
+}
+
+def go(Map coord, String cubeName = ncube.name, def defaultValue = null, ApplicationID appId)
+{
+    NCube target = NCubeManager.getCube(appId, cubeName)
+    return target.getCell(coord, output, defaultValue)
+}
+
+String url(String url)
+{
+    byte[] bytes = urlToBytes(url)
+    if (bytes == null)
+    {
+        return null
+    }
+    return StringUtilities.createUtf8String(bytes)
+}
+
+byte[] urlToBytes(String url)
+{
+    InputStream inStream = getClass().getResourceAsStream(url)
+    byte[] bytes = IOUtilities.inputStreamToBytes(inStream)
+    IOUtilities.close(inStream as Closeable)
+    return bytes
 }
 
 def ruleStop()
@@ -72,4 +90,14 @@ def jump(Map coord)
 {
     input.putAll(coord);
     throw new RuleJump(input)
+}
+
+long now()
+{
+    return System.nanoTime()
+}
+
+double elapsedMillis(long begin, long end)
+{
+    return (double) (end - begin) / 1000000.0d
 }

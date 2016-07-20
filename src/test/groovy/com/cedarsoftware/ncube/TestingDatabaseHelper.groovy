@@ -25,7 +25,6 @@ class TestingDatabaseHelper
 {
     public static int MYSQL = 1
     public static int HSQL = 2
-    public static int ORACLE = 3
     public static int test_db = HSQL
 
     public static NCube[] getCubesFromDisk(String ...names) throws IOException
@@ -69,11 +68,6 @@ class TestingDatabaseHelper
             return new TestingConnectionProvider(null, 'jdbc:mysql://127.0.0.1:3306/ncube?autoCommit=true', 'ncube', 'ncube')
         }
 
-        if (test_db == ORACLE)
-        {
-            return new TestingConnectionProvider('oracle.jdbc.driver.OracleDriver', 'jdbc:oracle:thin:@cvgli59.td.afg:1526:uwdeskd', 'ra_desktop', 'xxxxxx')
-        }
-
         throw new IllegalArgumentException('Unknown Database:  ' + test_db)
     }
 
@@ -81,15 +75,15 @@ class TestingDatabaseHelper
     {
         if (test_db == HSQL)
         {
-            return new HsqlTestingDatabaseManager(createJdbcConnectionProvider())
+            return new JdbcTestingDatabaseManager(createJdbcConnectionProvider(), '/ddl/hsqldb-schema.sql')
         }
 
         if (test_db == MYSQL)
         {
-            return new MySqlTestingDatabaseManager(createJdbcConnectionProvider())
+            return new JdbcTestingDatabaseManager(createJdbcConnectionProvider(), '/ddl/mysql-schema.sql')
         }
 
-        //  Don't manage tables for Oracle
+        //  Don't manage tables for other databases
         return new EmptyTestDatabaseManager()
     }
 
@@ -103,7 +97,6 @@ class TestingDatabaseHelper
         {
         }
 
-        @Override
         void insertCubeWithNoSha1(ApplicationID appId, String username, NCube cube) {
 
         }
@@ -133,23 +126,23 @@ class TestingDatabaseHelper
     public static void setupTestClassPaths()
     {
         NCube cp = NCubeManager.getNCubeFromResource(TestNCubeManager.defaultSnapshotApp, 'sys.classpath.tests.json')
-        NCubeManager.updateCube(TestNCubeManager.defaultSnapshotApp, cp, TestNCubeManager.USER_ID)
+        NCubeManager.updateCube(TestNCubeManager.defaultSnapshotApp, cp, true)
         cp = NCubeManager.getNCubeFromResource(ApplicationID.testAppId, 'sys.classpath.tests.json')
-        NCubeManager.updateCube(ApplicationID.testAppId, cp, TestNCubeManager.USER_ID)
+        NCubeManager.updateCube(ApplicationID.testAppId, cp, true)
     }
 
     public static void tearDownDatabase()
     {
         try
         {
-            NCubeManager.deleteCubes TestNCubeManager.defaultSnapshotApp, 'sys.classpath', TestNCubeManager.USER_ID
+            NCubeManager.deleteCubes TestNCubeManager.defaultSnapshotApp, 'sys.classpath'
         }
         catch (Exception ignored)
         { }
 
         try
         {
-            NCubeManager.deleteCubes ApplicationID.testAppId, 'sys.classpath', TestNCubeManager.USER_ID
+            NCubeManager.deleteCubes ApplicationID.testAppId, 'sys.classpath'
         }
         catch (Exception ignored)
         { }

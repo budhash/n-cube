@@ -35,8 +35,8 @@ import static org.mockito.Mockito.when
  */
 class TestNCubeJdbcPersister
 {
-    static final String APP_ID = "ncube.test";
-    static final String USER_ID = "jdirt";
+    static final String APP_ID = TestNCubeManager.APP_ID;
+    static final String USER_ID = TestNCubeManager.USER_ID;
 
     private ApplicationID defaultSnapshotApp = new ApplicationID(ApplicationID.DEFAULT_TENANT, APP_ID, "1.0.0", ApplicationID.DEFAULT_STATUS, ApplicationID.TEST_BRANCH)
 
@@ -74,7 +74,7 @@ class TestNCubeJdbcPersister
         ncube1.deleteAxis("bu")
         ApplicationID next = defaultSnapshotApp.createNewSnapshotId("0.2.0")
         persister.updateCube(defaultSnapshotApp, ncube1, USER_ID)
-        int numRelease = persister.releaseCubes(defaultSnapshotApp, "0.2.0")
+        int numRelease = NCubeManager.releaseCubes(defaultSnapshotApp, "0.2.0")
         assertEquals(0, numRelease)
 
         cubeList = NCubeManager.search(next, 'test.*', null, [(NCubeManager.SEARCH_ACTIVE_RECORDS_ONLY):true])
@@ -115,7 +115,7 @@ class TestNCubeJdbcPersister
         Connection c = getConnectionThatThrowsSQLException()
         try
         {
-            new NCubeJdbcPersister().getAppNames(c, defaultSnapshotApp.DEFAULT_TENANT, null, ApplicationID.TEST_BRANCH)
+            new NCubeJdbcPersister().getAppNames(c, null)
             fail()
         }
         catch (IllegalArgumentException e)
@@ -130,7 +130,7 @@ class TestNCubeJdbcPersister
         Connection c = getConnectionThatThrowsSQLException()
         try
         {
-            new NCubeJdbcPersister().getAppVersions(c, "DEFAULT", "FOO", "SNAPSHOT", null)
+            new NCubeJdbcPersister().getVersions(c, "DEFAULT", null)
             fail()
         }
         catch (IllegalArgumentException e)
@@ -205,26 +205,11 @@ class TestNCubeJdbcPersister
 
         try
         {
-            new NCubeJdbcPersister().createBranch(c, defaultSnapshotApp)
+            new NCubeJdbcPersister().copyBranch(c, defaultSnapshotApp.asHead(), defaultSnapshotApp)
             fail()
         }
         catch (NullPointerException e)
         {
-        }
-    }
-
-    @Test
-    void testGetBranchesWithNullTenant()
-    {
-        Connection c = getConnectionThatThrowsSQLException()
-        try
-        {
-            new NCubeJdbcPersister().getBranches(c, null)
-            fail()
-        }
-        catch (IllegalArgumentException e)
-        {
-            assertTrue(e.message.contains('tenant must not be null or empty'))
         }
     }
 
@@ -283,7 +268,7 @@ class TestNCubeJdbcPersister
 
         try
         {
-            adapter.getAppNames(null, null, null)
+            adapter.getAppNames(null)
             fail()
         }
         catch (IllegalArgumentException e)
@@ -291,15 +276,7 @@ class TestNCubeJdbcPersister
 
         try
         {
-            adapter.getAppVersions(null, null, null, null)
-            fail()
-        }
-        catch (IllegalArgumentException e)
-        { }
-
-        try
-        {
-            adapter.getBranches(null)
+            adapter.getVersions(null, null)
             fail()
         }
         catch (IllegalArgumentException e)

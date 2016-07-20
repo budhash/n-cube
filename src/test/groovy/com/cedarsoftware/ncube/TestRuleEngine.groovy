@@ -150,38 +150,30 @@ class TestRuleEngine
     {
         NCube ncube = NCubeManager.getNCubeFromResource 'expressionAxis.json'
 
-        Set<String> reqScope = ncube.requiredScope
+        Set<String> reqScope = ncube.getRequiredScope([:], [:])
         assert 1 == reqScope.size()
         assert reqScope.contains('state')
 
-        Set<String> optScope = ncube.optionalScope
-        assert 6 == optScope.size()
-        assert optScope.contains('condition')
-        assert optScope.contains('driverAge')
-        assert optScope.contains('gender')
-        assert optScope.contains('stop')
-        assert optScope.contains('vehicleCylinders')
-        assert optScope.contains('vehiclePrice')
+        Set<String> optScope = ncube.getOptionalScope([:], [:])
+        assert 1 == optScope.size()
     }
 
     @Test
     void testCubeRefFromRuleAxis()
     {
         NCube ncube1 = NCubeManager.getNCubeFromResource 'testCube5.json'
-        Set reqScope = ncube1.requiredScope
-        Set optScope = ncube1.optionalScope
+        Set reqScope = ncube1.getRequiredScope([:], [:])
+        Set optScope = ncube1.getOptionalScope([:], [:])
         assert optScope.size() == 1
         assert optScope.contains('Age')
         assert 0 == reqScope.size()
 
         NCube ncube2 = NCubeManager.getNCubeFromResource 'expressionAxis2.json'
-        reqScope = ncube2.requiredScope
+        reqScope = ncube2.getRequiredScope([:], [:])
         assert reqScope.size() == 1
         assert reqScope.contains('state')
-        optScope = ncube2.optionalScope
-        assert 2 == optScope.size()
-        assert optScope.contains('condition')
-        assert optScope.contains('AGE')
+        optScope = ncube2.getOptionalScope([:], [:])
+        assert 1 == optScope.size()
 
         def coord = [age:18,state:'OH'];
         Map output = [:]
@@ -740,6 +732,8 @@ class TestRuleEngine
         {
             String html = binding.toHtml()
             assert html.contains('medium /')
+            assert binding.getValue() != null
+            assert binding.getCoordinate().size() > 0
         }
     }
 
@@ -805,7 +799,7 @@ class TestRuleEngine
 
         input = [state:'OH', rule:'MatchesNoRuleName']
         output = [:]
-        ret = ncube.getCell(input, output)
+        ncube.getCell(input, output)
         assert ret == 'nope'
         assert output.text == 'nope'
     }

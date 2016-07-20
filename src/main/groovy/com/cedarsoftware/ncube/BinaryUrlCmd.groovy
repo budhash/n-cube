@@ -2,6 +2,8 @@ package com.cedarsoftware.ncube
 
 import com.cedarsoftware.util.UrlUtilities
 import groovy.transform.CompileStatic
+import org.apache.logging.log4j.LogManager
+import org.apache.logging.log4j.Logger
 
 /**
  * Process a binary type (byte[]) that is specified at a URL.
@@ -10,7 +12,7 @@ import groovy.transform.CompileStatic
  *         <br>
  *         Copyright (c) Cedar Software LLC
  *         <br><br>
- *         Licensed under the Apache License, Version 2.0 (the "License");
+ *         Licensed under the Apache License, Version 2.0 (the "License")
  *         you may not use this file except in compliance with the License.
  *         You may obtain a copy of the License at
  *         <br><br>
@@ -23,28 +25,19 @@ import groovy.transform.CompileStatic
  *         limitations under the License.
  */
 @CompileStatic
-public class BinaryUrlCmd extends ContentCmdCell
+class BinaryUrlCmd extends ContentCmdCell
 {
+    private static final Logger LOG = LogManager.getLogger(BinaryUrlCmd.class)
     //  Private constructor only for serialization.
     private BinaryUrlCmd() {}
 
-    public BinaryUrlCmd(String url, boolean cache)
+    BinaryUrlCmd(String url, boolean cache)
     {
         super(null, url, cache)
     }
 
-    protected Object simpleFetch(Map ctx)
+    protected Object grab(URL u)
     {
-        try
-        {
-            URL u = getActualUrl(ctx)
-            return UrlUtilities.getContentFromUrl(u, true)
-        }
-        catch (Exception e)
-        {
-            NCube cube = getNCube(ctx)
-            setErrorMessage("Failed to load binary content from URL: " + getUrl() + ", cube: " + cube.getName() + ", version: " + cube.getVersion())
-            throw new IllegalStateException(getErrorMessage(), e)
-        }
+        return UrlUtilities.getContentFromUrl(u, true)
     }
 }

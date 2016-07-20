@@ -1,5 +1,6 @@
 package com.cedarsoftware.ncube
 
+import groovy.transform.CompileStatic
 import org.junit.After
 import org.junit.Assert
 import org.junit.Before
@@ -28,7 +29,7 @@ import static org.junit.Assert.fail
  *         See the License for the specific language governing permissions and
  *         limitations under the License.
  */
-
+@CompileStatic
 class TestBinaryUrlCmd
 {
     @Before
@@ -65,8 +66,10 @@ class TestBinaryUrlCmd
             cmd.simpleFetch(args)
             fail();
         }
-        catch (IllegalStateException e) {
-            assertTrue(e.message.toLowerCase().contains("failed to load binary content"))
+        catch (IllegalStateException e)
+        {
+            assertTrue(e.message.toLowerCase().contains("invalid url in cell"))
+            assertTrue(e.message.toLowerCase().contains("malformed"))
         }
     }
 }

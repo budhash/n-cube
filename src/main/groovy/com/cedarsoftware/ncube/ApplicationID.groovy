@@ -4,6 +4,7 @@ import com.cedarsoftware.util.StringUtilities
 import groovy.transform.CompileStatic
 
 import java.util.regex.Matcher
+import java.util.regex.Pattern
 
 /**
  * This class binds together Tenant, App, version, status, and branch.  These fields together
@@ -36,6 +37,7 @@ class ApplicationID
     public static final String TEST_BRANCH = 'TEST'
 
     public static final transient ApplicationID testAppId = new ApplicationID(DEFAULT_TENANT, DEFAULT_APP, DEFAULT_VERSION, DEFAULT_STATUS, TEST_BRANCH)
+    public static final Pattern VERSION_REGEX = ~/[.]/
 
     private final String tenant
     private final String app
@@ -46,25 +48,16 @@ class ApplicationID
     // For serialization support only
     private ApplicationID()
     {
-        tenant = DEFAULT_TENANT;
-        app = DEFAULT_APP;
-        version = DEFAULT_VERSION;
+        tenant = DEFAULT_TENANT
+        app = DEFAULT_APP
+        version = DEFAULT_VERSION
         status = ReleaseStatus.SNAPSHOT.name()
-        branch = HEAD;
-    }
-
-    /**
-     * This constructor is used only by Test Code
-     */
-    @Deprecated
-    ApplicationID(String tenant, String app, String version, String status)
-    {
-        throw new RuntimeException("Use the 5 argument constructor - add branch as the last argument")
+        branch = HEAD
     }
 
     ApplicationID(String tenant, String app, String version, String status, String branch)
     {
-        this.tenant = tenant
+        this.tenant = tenant ? tenant.trim() : null
         this.app = app
         this.version = version
         this.status = status
@@ -229,6 +222,21 @@ class ApplicationID
         return new ApplicationID(tenant, app, version, status, HEAD)
     }
 
+    /**
+     * Convert an ApplicationID from one branch to another
+     * @param bran String destination branch name
+     * @return new ApplicationID in terms of the passed in branch (bran)
+     */
+    ApplicationID asBranch(String bran)
+    {
+        return new ApplicationID(tenant, app, version, status, bran)
+    }
+
+    /**
+     * Convert an Application from one version to another
+     * @param ver String destination version
+     * @return new ApplicationID in terms of the passed in version (ver)
+     */
     ApplicationID asVersion(String ver)
     {
         if (version.equals(ver))
@@ -238,6 +246,9 @@ class ApplicationID
         return new ApplicationID(tenant, app, ver, status, branch)
     }
 
+    /**
+     * Ensure that all components of the ApplicationID are valid (with their specs in terms of allowable characters.)
+     */
     void validate()
     {
         validateTenant(tenant)
@@ -341,5 +352,33 @@ class ApplicationID
                 StringUtilities.equalsIgnoreCase(status, that.status) &&
                 StringUtilities.equals(version, that.version)
 
+    }
+
+    /**
+     * @return long version as a number that can be compared.  It is one million times major, plus one
+     * thousand times minor, plus patch.
+     */
+    long getVersionValue()
+    {
+        return getVersionValue(version)
+    }
+
+    /**
+     * @param String version in "major.minor.patch" format where all three components are numeric and each one
+     * is less than 1,000.
+     * @return long version as a number that can be compared.  It is one million times major, plus one
+     * thousand times minor, plus patch.
+     */
+    static long getVersionValue(String version)
+    {
+        String[] pieces = VERSION_REGEX.split(version)
+        if (pieces.length != 3)
+        {
+            return 0
+        }
+        int major = Integer.valueOf(pieces[0]) * 1000 * 1000
+        int minor = Integer.valueOf(pieces[1]) * 1000
+        int patch = Integer.valueOf(pieces[2].split('-')[0])
+        return major + minor + patch
     }
 }
